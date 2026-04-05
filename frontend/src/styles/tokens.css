@@ -1,0 +1,19 @@
+:root {
+  --bg-page: #16110d;
+  --bg-panel: rgba(255, 248, 238, 0.08);
+  --bg-panel-strong: rgba(255, 248, 238, 0.12);
+  --border-soft: rgba(255, 244, 230, 0.12);
+  --text-primary: #fff6ec;
+  --text-secondary: rgba(255, 246, 236, 0.72);
+  --text-muted: rgba(255, 246, 236, 0.48);
+  --brand-primary: #ff7a2f;
+  --brand-secondary: #ffd39d;
+  --brand-accent: #79f1c8;
+  --surface-dark: #1b1511;
+  --surface-green: #132720;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, "Segoe UI", sans-serif;
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --shadow-soft: 0 20px 70px rgba(0, 0, 0, 0.28);
+}

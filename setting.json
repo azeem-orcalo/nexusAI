@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "atlassian": {
+      "type": "url",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "headers": {
+        "Authorization": "ATATT3xFfGF0C9UlIc6FA8K-XXGhGB3xS0DKbGyl07PN_S-i95usejDEQaTdgtWnP1fZflOkqWGSwaBsCm5HbSzzMPl9RJ-bbvl3mU6yV1q0LrcHTu_dJ2aRa_rb5PMdhz1B_8SjFc0D6YpxF-dWuLMSz32Jz9R7999_qQKQg5LhQzwEuFLT5S8=365C4440"
+      }
+    }
+  }
+}
