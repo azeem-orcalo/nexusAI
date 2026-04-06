@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ListResearchFeedQueryDto } from "./dto/list-research-feed-query.dto";
 import { RecommendationRequestDto } from "./dto/recommendation-request.dto";
 import { DiscoverService } from "./discover.service";
 
@@ -26,9 +27,27 @@ export class DiscoverController {
     return this.discoverService.quickActions();
   }
 
+  @Get("home-workflows")
+  @ApiOperation({ summary: "Get home page workflow categories and suggestions" })
+  homeWorkflows() {
+    return this.discoverService.homeWorkflows();
+  }
+
+  @Get("home-use-cases")
+  @ApiOperation({ summary: "Get home page quick-start use cases" })
+  homeUseCases() {
+    return this.discoverService.homeUseCases();
+  }
+
   @Get("research-feed")
   @ApiOperation({ summary: "Get research and release feed items" })
-  researchFeed() {
-    return this.discoverService.researchFeed();
+  researchFeed(@Query() query: ListResearchFeedQueryDto) {
+    return this.discoverService.researchFeed(query);
+  }
+
+  @Get("research-feed/filters")
+  @ApiOperation({ summary: "Get discover research feed filters" })
+  researchFeedFilters() {
+    return this.discoverService.researchFeedFilters();
   }
 }

@@ -6,9 +6,19 @@ export class CreateAgentDto {
   @IsString()
   name!: string;
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
   @ApiProperty()
   @IsString()
   purpose!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  audience?: string;
 
   @ApiProperty()
   @IsString()
@@ -25,4 +35,15 @@ export class CreateAgentDto {
   @IsArray()
   @IsString({ each: true })
   memory?: string[];
+
+  @ApiProperty({ type: [String], required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tests?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  deployTarget?: string;
 }

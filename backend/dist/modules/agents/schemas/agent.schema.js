@@ -22,9 +22,19 @@ __decorate([
 ], Agent.prototype, "name", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
+    (0, mongoose_1.Prop)({ default: "Research & Data" }),
+    __metadata("design:type", String)
+], Agent.prototype, "category", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
     (0, mongoose_1.Prop)({ required: true }),
     __metadata("design:type", String)
 ], Agent.prototype, "purpose", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    (0, mongoose_1.Prop)({ default: "General users" }),
+    __metadata("design:type", String)
+], Agent.prototype, "audience", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
     (0, mongoose_1.Prop)({ required: true }),
@@ -40,6 +50,16 @@ __decorate([
     (0, mongoose_1.Prop)({ type: [String], default: [] }),
     __metadata("design:type", Array)
 ], Agent.prototype, "memory", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ type: [String] }),
+    (0, mongoose_1.Prop)({ type: [String], default: [] }),
+    __metadata("design:type", Array)
+], Agent.prototype, "tests", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    (0, mongoose_1.Prop)({ default: "api" }),
+    __metadata("design:type", String)
+], Agent.prototype, "deployTarget", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)(),
     (0, mongoose_1.Prop)({ default: "draft" }),

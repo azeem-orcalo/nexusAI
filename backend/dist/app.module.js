@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const account_module_1 = require("./modules/account/account.module");
 const agents_module_1 = require("./modules/agents/agents.module");
 const auth_module_1 = require("./modules/auth/auth.module");
+const chat_module_1 = require("./modules/chat/chat.module");
 const database_config_1 = require("./database.config");
 const dashboard_module_1 = require("./modules/dashboard/dashboard.module");
 const discover_module_1 = require("./modules/discover/discover.module");
@@ -23,6 +24,7 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             ...database_config_1.databaseImports,
             auth_module_1.AuthModule,
+            chat_module_1.ChatModule,
             models_module_1.ModelsModule,
             agents_module_1.AgentsModule,
             dashboard_module_1.DashboardModule,

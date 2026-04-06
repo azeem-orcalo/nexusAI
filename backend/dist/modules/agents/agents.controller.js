@@ -16,7 +16,11 @@ exports.AgentsController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const agents_service_1 = require("./agents.service");
+const create_agent_message_dto_1 = require("./dto/create-agent-message.dto");
+const create_agent_task_dto_1 = require("./dto/create-agent-task.dto");
+const create_agent_task_message_dto_1 = require("./dto/create-agent-task-message.dto");
 const create_agent_dto_1 = require("./dto/create-agent.dto");
+const update_agent_task_dto_1 = require("./dto/update-agent-task.dto");
 const update_agent_dto_1 = require("./dto/update-agent.dto");
 let AgentsController = class AgentsController {
     constructor(agentsService) {
@@ -27,6 +31,9 @@ let AgentsController = class AgentsController {
     }
     findAll() {
         return this.agentsService.findAll();
+    }
+    workspaceContent() {
+        return this.agentsService.workspaceContent();
     }
     templates() {
         return this.agentsService.templates();
@@ -42,6 +49,30 @@ let AgentsController = class AgentsController {
     }
     deploy(id) {
         return this.agentsService.deploy(id);
+    }
+    messages(id) {
+        return this.agentsService.messages(id);
+    }
+    addMessage(id, payload) {
+        return this.agentsService.addMessage(id, payload);
+    }
+    tasks(id) {
+        return this.agentsService.tasks(id);
+    }
+    createTask(id, payload) {
+        return this.agentsService.createTask(id, payload);
+    }
+    updateTask(taskId, payload) {
+        return this.agentsService.updateTask(taskId, payload);
+    }
+    deleteTask(taskId) {
+        return this.agentsService.deleteTask(taskId);
+    }
+    duplicateTask(taskId) {
+        return this.agentsService.duplicateTask(taskId);
+    }
+    addTaskMessage(taskId, payload) {
+        return this.agentsService.addTaskMessage(taskId, payload);
     }
 };
 exports.AgentsController = AgentsController;
@@ -60,6 +91,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], AgentsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)("workspace-content"),
+    (0, swagger_1.ApiOperation)({ summary: "Get agent builder landing page content" }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "workspaceContent", null);
 __decorate([
     (0, common_1.Get)("templates"),
     (0, swagger_1.ApiOperation)({ summary: "List agent templates" }),
@@ -100,6 +138,74 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], AgentsController.prototype, "deploy", null);
+__decorate([
+    (0, common_1.Get)(":id/messages"),
+    (0, swagger_1.ApiOperation)({ summary: "List chat messages for an agent" }),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "messages", null);
+__decorate([
+    (0, common_1.Post)(":id/messages"),
+    (0, swagger_1.ApiOperation)({ summary: "Append chat message for an agent" }),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, create_agent_message_dto_1.CreateAgentMessageDto]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "addMessage", null);
+__decorate([
+    (0, common_1.Get)(":id/tasks"),
+    (0, swagger_1.ApiOperation)({ summary: "List tasks for an agent" }),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "tasks", null);
+__decorate([
+    (0, common_1.Post)(":id/tasks"),
+    (0, swagger_1.ApiOperation)({ summary: "Create task for an agent" }),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, create_agent_task_dto_1.CreateAgentTaskDto]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "createTask", null);
+__decorate([
+    (0, common_1.Patch)("tasks/:taskId"),
+    (0, swagger_1.ApiOperation)({ summary: "Update an agent task" }),
+    __param(0, (0, common_1.Param)("taskId")),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_agent_task_dto_1.UpdateAgentTaskDto]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "updateTask", null);
+__decorate([
+    (0, common_1.Delete)("tasks/:taskId"),
+    (0, swagger_1.ApiOperation)({ summary: "Delete an agent task" }),
+    __param(0, (0, common_1.Param)("taskId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "deleteTask", null);
+__decorate([
+    (0, common_1.Post)("tasks/:taskId/duplicate"),
+    (0, swagger_1.ApiOperation)({ summary: "Duplicate an agent task" }),
+    __param(0, (0, common_1.Param)("taskId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "duplicateTask", null);
+__decorate([
+    (0, common_1.Post)("tasks/:taskId/messages"),
+    (0, swagger_1.ApiOperation)({ summary: "Append task history message" }),
+    __param(0, (0, common_1.Param)("taskId")),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, create_agent_task_message_dto_1.CreateAgentTaskMessageDto]),
+    __metadata("design:returntype", void 0)
+], AgentsController.prototype, "addTaskMessage", null);
 exports.AgentsController = AgentsController = __decorate([
     (0, swagger_1.ApiTags)("agents"),
     (0, common_1.Controller)("agents"),

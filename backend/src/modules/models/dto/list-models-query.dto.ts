@@ -29,6 +29,21 @@ export class ListModelsQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  tag?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  openSource?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  maxPrice?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsNumberString()
   minRating?: string;
 }

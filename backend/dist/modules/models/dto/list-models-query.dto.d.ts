@@ -4,5 +4,8 @@ export declare class ListModelsQueryDto {
     category?: string;
     useCase?: string;
     priceModel?: string;
+    tag?: string;
+    openSource?: string;
+    maxPrice?: string;
     minRating?: string;
 }

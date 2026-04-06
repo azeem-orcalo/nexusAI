@@ -11,8 +11,16 @@ export class Agent {
   name!: string;
 
   @ApiProperty()
+  @Prop({ default: "Research & Data" })
+  category!: string;
+
+  @ApiProperty()
   @Prop({ required: true })
   purpose!: string;
+
+  @ApiProperty()
+  @Prop({ default: "General users" })
+  audience!: string;
 
   @ApiProperty()
   @Prop({ required: true })
@@ -25,6 +33,14 @@ export class Agent {
   @ApiProperty({ type: [String] })
   @Prop({ type: [String], default: [] })
   memory!: string[];
+
+  @ApiProperty({ type: [String] })
+  @Prop({ type: [String], default: [] })
+  tests!: string[];
+
+  @ApiProperty()
+  @Prop({ default: "api" })
+  deployTarget!: string;
 
   @ApiProperty()
   @Prop({ default: "draft" })

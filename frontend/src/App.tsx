@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { AuthPanel } from "./components/auth/AuthPanel";
 import { AgentsWorkspace } from "./components/agents/AgentsWorkspace";
 import { ChatHubShell } from "./components/chat/ChatHubShell";
+import { DiscoverResearchPage } from "./components/discover/DiscoverResearchPage";
 import {
   HeroSection,
   type HeroSearchResult
 } from "./components/home/HeroSection";
+import { HomeModelsSection } from "./components/home/HomeModelsSection";
+import { HomeUseCasesSection } from "./components/home/HomeUseCasesSection";
 import { PageLinksSection } from "./components/home/PageLinksSection";
 import { AppShell } from "./components/layout/AppShell";
 import { MarketplaceSection } from "./components/marketplace/MarketplaceSection";
@@ -14,9 +17,10 @@ import { PlaceholderPage } from "./components/shared/PlaceholderPage";
 import { useAuth } from "./context/AuthContext";
 import { heroContent } from "./data/mock/home";
 import { api } from "./lib/api";
+import { isRtlLanguage, t } from "./lib/i18n";
 import type { ChatAction, ChatPromptOption, ChatSuggestion } from "./data/mock/chatHub";
 import type { HeroContent } from "./data/mock/home";
-import type { MarketplaceModel, ModelDetail } from "./data/mock/marketplace";
+import type { ModelDetail } from "./data/mock/marketplace";
 import type {
   AccountSettings,
   ApiAgent,
@@ -24,10 +28,13 @@ import type {
   ApiKey,
   ApiModel,
   ApiModelDetail,
+  ApiModelFilters,
   ApiReview,
   AppPage,
   DashboardOverview,
   DashboardUsagePoint,
+  HomeUseCase,
+  HomeWorkflowCategory,
   ResearchFeedItem
 } from "./types/api";
 
@@ -109,22 +116,6 @@ const quickActionIconMap: Record<string, string> = {
 
 const toSlug = (value: string): string => value.toLowerCase().split(" ").join("-");
 
-const toMarketplaceModel = (
-  model: ApiModel,
-  index: number
-): MarketplaceModel => ({
-  id: model.id,
-  name: model.name,
-  provider: model.provider,
-  badge: index === 0 ? "Hot" : undefined,
-  description: model.description,
-  tags: model.tags.map((tag) => ({ id: tag, label: tag })),
-  rating: model.averageRating.toFixed(1),
-  reviews: `(${Math.round(model.averageRating * 860)})`,
-  price: `${model.pricePerMillion}/1M`,
-  tokenUnit: "tk"
-});
-
 const toModelDetail = (
   detail: ApiModelDetail,
   reviews: ApiReview[]
@@ -184,7 +175,16 @@ const App = (): JSX.Element => {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [featuredModels, setFeaturedModels] = useState<ApiModel[]>([]);
   const [allModels, setAllModels] = useState<ApiModel[]>([]);
+  const [modelFilters, setModelFilters] = useState<ApiModelFilters | null>(null);
   const [quickActions, setQuickActions] = useState<string[]>([]);
+  const [homeWorkflowCategories, setHomeWorkflowCategories] = useState<
+    HomeWorkflowCategory[]
+  >([]);
+  const [homeUseCases, setHomeUseCases] = useState<HomeUseCase[]>([]);
+  const [homeUseCaseTitle, setHomeUseCaseTitle] = useState<string>(
+    "Quick-Start by Use Case"
+  );
+  const [homeUseCaseSubtitle, setHomeUseCaseSubtitle] = useState<string>("");
   const [researchFeed, setResearchFeed] = useState<ResearchFeedItem[]>([]);
   const [dashboardOverview, setDashboardOverview] =
     useState<DashboardOverview | null>(null);
@@ -194,9 +194,16 @@ const App = (): JSX.Element => {
   const [agents, setAgents] = useState<ApiAgent[]>([]);
   const [agentTemplates, setAgentTemplates] = useState<ApiAgentTemplate[]>([]);
   const [settings, setSettings] = useState<AccountSettings | null>(null);
+  const [language, setLanguage] = useState<string>(
+    window.localStorage.getItem("nexusai-language") ?? "en"
+  );
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [selectedModelDetail, setSelectedModelDetail] =
     useState<ModelDetail | null>(null);
+  const [pendingChatRequest, setPendingChatRequest] = useState<{
+    id: string;
+    prompt: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
 
@@ -214,7 +221,10 @@ const App = (): JSX.Element => {
     void Promise.all([
       api.featuredModels(),
       api.listModels(),
+      api.modelFilters(),
       api.quickActions(),
+      api.homeWorkflows(),
+      api.homeUseCases(),
       api.researchFeed(),
       api.dashboardOverview(),
       api.dashboardUsage(),
@@ -225,7 +235,10 @@ const App = (): JSX.Element => {
         ([
           nextFeaturedModels,
           nextAllModels,
+          nextModelFilters,
           nextQuickActions,
+          nextHomeWorkflows,
+          nextHomeUseCases,
           nextResearchFeed,
           nextDashboardOverview,
           nextDashboardUsage,
@@ -237,7 +250,12 @@ const App = (): JSX.Element => {
           }
           setFeaturedModels(nextFeaturedModels);
           setAllModels(nextAllModels);
+          setModelFilters(nextModelFilters);
           setQuickActions(nextQuickActions);
+          setHomeWorkflowCategories(nextHomeWorkflows.categories);
+          setHomeUseCases(nextHomeUseCases.items);
+          setHomeUseCaseTitle(nextHomeUseCases.title);
+          setHomeUseCaseSubtitle(nextHomeUseCases.subtitle);
           setResearchFeed(nextResearchFeed);
           setDashboardOverview(nextDashboardOverview);
           setDashboardUsage(nextDashboardUsage);
@@ -275,6 +293,7 @@ const App = (): JSX.Element => {
     void Promise.all([api.settings(session.token), api.apiKeys(session.token)])
       .then(([nextSettings, nextApiKeys]) => {
         setSettings(nextSettings);
+        setLanguage(nextSettings.language ?? "en");
         setApiKeys(nextApiKeys);
       })
       .catch(() => {
@@ -282,6 +301,26 @@ const App = (): JSX.Element => {
         setApiKeys([]);
       });
   }, [session?.token]);
+
+  const handleLanguageChange = (nextLanguage: string): void => {
+    setLanguage(nextLanguage);
+    window.localStorage.setItem("nexusai-language", nextLanguage);
+    if (session?.token) {
+      void api
+        .updateSettings({ language: nextLanguage }, session.token)
+        .then((nextSettings) => setSettings(nextSettings))
+        .catch(() => undefined);
+    }
+  };
+
+  const handleNavigate = (page: AppPage): void => {
+    if (page === "agents" && !isAuthenticated) {
+      setCurrentPage("auth");
+      return;
+    }
+
+    setCurrentPage(page);
+  };
 
   useEffect(() => {
     if (!selectedModelId) {
@@ -297,15 +336,10 @@ const App = (): JSX.Element => {
       .catch(() => setSelectedModelDetail(null));
   }, [selectedModelId]);
 
-  const marketplaceCards = useMemo<MarketplaceModel[]>(
-    () => allModels.map(toMarketplaceModel),
-    [allModels]
-  );
-
-  const featuredMarketplaceCards = useMemo<MarketplaceModel[]>(
-    () => featuredModels.map(toMarketplaceModel),
-    [featuredModels]
-  );
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = isRtlLanguage(language) ? "rtl" : "ltr";
+  }, [language]);
 
   const heroApiContent = useMemo<HeroContent>(
     () => ({
@@ -437,22 +471,22 @@ const App = (): JSX.Element => {
         { id: "loading-dashboard", label: "Loading dashboard metrics..." },
         { id: "loading-discovery", label: "Loading discovery feeds..." }
       ]}
-      description="The frontend is now waiting for live backend responses from NestJS endpoints."
+      description={t(language, "loading_desc")}
       eyebrow="Integration"
-      title="Connecting to API"
+      title={t(language, "loading_title")}
     />
   );
 
   const renderError = (): JSX.Element => (
     <PlaceholderPage
       actions={[
-        { id: "api-base", label: "Check VITE_API_BASE_URL" },
-        { id: "backend", label: "Confirm backend is running on localhost:3000" },
-        { id: "cors", label: "Verify CORS and /api routes" }
+        { id: "api-base", label: t(language, "error_check_base") },
+        { id: "backend", label: t(language, "error_check_backend") },
+        { id: "cors", label: t(language, "error_check_cors") }
       ]}
       description={error}
       eyebrow="Integration Error"
-      title="API connection failed"
+      title={t(language, "error_title")}
     />
   );
 
@@ -466,7 +500,23 @@ const App = (): JSX.Element => {
     }
 
     if (currentPage === "auth") {
-      return <AuthPanel onSuccess={() => setCurrentPage("home")} />;
+      return (
+        <AuthPanel
+          language={language}
+          onClose={() => setCurrentPage("home")}
+          onSuccess={() => setCurrentPage("home")}
+        />
+      );
+    }
+
+    if (currentPage === "agents" && !isAuthenticated) {
+      return (
+        <AuthPanel
+          language={language}
+          onClose={() => setCurrentPage("home")}
+          onSuccess={() => setCurrentPage("agents")}
+        />
+      );
     }
 
     if (currentPage === "home") {
@@ -474,22 +524,39 @@ const App = (): JSX.Element => {
         <>
           <HeroSection
             content={heroApiContent}
+            language={language}
+            onSubmitPrompt={(prompt) => {
+              setPendingChatRequest({ id: `home-search-${Date.now()}`, prompt });
+              handleNavigate("chat-hub");
+            }}
             onSearchNavigate={(result) => {
-              setCurrentPage(result.page);
+              handleNavigate(result.page);
             }}
             searchResults={heroSearchResults}
-            onNavigate={(page) => setCurrentPage(page)}
+            workflowCategories={homeWorkflowCategories}
+            onNavigate={handleNavigate}
           />
-          <MarketplaceSection
-            models={featuredMarketplaceCards}
-            onSelectModel={(modelId) => {
+          <HomeModelsSection
+            models={featuredModels}
+            onOpenModel={(modelId) => {
               setSelectedModelId(modelId);
               setCurrentPage("marketplace");
             }}
+            onSeeAll={() => handleNavigate("marketplace")}
           />
           <PageLinksSection
             links={productPages}
-            onNavigate={(page) => setCurrentPage(page)}
+            onNavigate={handleNavigate}
+          />
+          <HomeUseCasesSection
+            items={homeUseCases}
+            onOpenUseCase={(prompt) => {
+              setPendingChatRequest({ id: `use-case-${Date.now()}`, prompt });
+              handleNavigate("chat-hub");
+            }}
+            onSubscribe={() => handleNavigate(isAuthenticated ? "discover-new" : "auth")}
+            subtitle={homeUseCaseSubtitle}
+            title={homeUseCaseTitle}
           />
         </>
       );
@@ -623,8 +690,11 @@ const App = (): JSX.Element => {
           analysisActions={chatQuickActions.slice(3)}
           createActions={chatQuickActions}
           footerPrompts={researchFeed.map((item) => item.summary)}
+          initialRequest={pendingChatRequest}
+          language={language}
           models={chatModels}
-          onNavigate={(page) => setCurrentPage(page)}
+          onNavigate={handleNavigate}
+          onInitialMessageHandled={() => setPendingChatRequest(null)}
           promptOptions={chatPromptOptions}
           quickActions={[
             { id: "marketplace", label: "Browse Marketplace", icon: "🏪" },
@@ -639,6 +709,14 @@ const App = (): JSX.Element => {
               ? chatSuggestionChips
               : [{ id: "loading", label: "Research feed loading" }]
           }
+        />
+      );
+    }
+
+    if (currentPage === "discover-new") {
+      return (
+        <DiscoverResearchPage
+          onOpenChatHub={() => handleNavigate("chat-hub")}
         />
       );
     }
@@ -671,7 +749,9 @@ const App = (): JSX.Element => {
       return (
         <div className="bg-[#f7f3ee]">
           <MarketplaceSection
-            models={marketplaceCards}
+            filterOptions={modelFilters}
+            language={language}
+            models={allModels}
             onSelectModel={(modelId) => setSelectedModelId(modelId)}
           />
         </div>
@@ -691,7 +771,18 @@ const App = (): JSX.Element => {
   return (
     <AppShell
       currentPage={currentPage}
-      onNavigate={setCurrentPage}
+      language={language}
+      labels={{
+        agents: t(language, "nav_agents"),
+        chatHub: t(language, "nav_chat_hub"),
+        discoverNew: t(language, "nav_discover_new"),
+        getStartedFree: t(language, "get_started_free"),
+        marketplace: t(language, "nav_marketplace"),
+        signIn: t(language, "sign_in"),
+        signOut: t(language, "sign_out")
+      }}
+      onLanguageChange={handleLanguageChange}
+      onNavigate={handleNavigate}
       onSignOut={signOut}
       user={user}
     >

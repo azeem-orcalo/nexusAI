@@ -1,5 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { HeroContent } from "../../data/mock/home";
+import { t } from "../../lib/i18n";
+import type { HomeWorkflowCategory } from "../../types/api";
 
 export type HeroSearchResult = {
   id: string;
@@ -10,64 +12,44 @@ export type HeroSearchResult = {
 
 type HeroAttachment = {
   id: string;
-  kind: "audio" | "file" | "screen" | "video";
+  kind: "audio" | "camera" | "file" | "screen" | "video";
   name: string;
   previewUrl?: string;
   sizeLabel?: string;
 };
 
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: {
+    results: ArrayLike<{
+      0: { transcript: string };
+      isFinal?: boolean;
+      length: number;
+    }>;
+  }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserWindow = Window &
+  typeof globalThis & {
+    SpeechRecognition?: new () => BrowserSpeechRecognition;
+    webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+  };
+
 type HeroSectionProps = {
   content: HeroContent;
+  language: string;
   searchResults: HeroSearchResult[];
+  workflowCategories: HomeWorkflowCategory[];
   onNavigate: (page: "chat-hub" | "marketplace" | "agents") => void;
   onSearchNavigate: (result: HeroSearchResult) => void;
+  onSubmitPrompt: (prompt: string) => void;
 };
-
-const categorySuggestions: Record<string, string[]> = {
-  recruiting: [
-    "Monitor job postings at target companies",
-    "Benchmark salary for a specific role",
-    "Build a hiring pipeline tracker",
-    "Research a candidate before an interview",
-    "Build an interactive talent market map"
-  ],
-  prototype: [
-    "Create a landing page wireframe",
-    "Draft product copy for a new feature",
-    "Generate a clickable app flow",
-    "Build a waitlist page concept",
-    "Outline MVP screens and states"
-  ],
-  business: [
-    "Create a 30-day GTM plan",
-    "Build a pricing comparison sheet",
-    "Draft a founder pitch outline",
-    "Estimate CAC and retention assumptions",
-    "Summarize competitors and positioning"
-  ],
-  learn: [
-    "Explain AI agents in simple words",
-    "Create a learning roadmap for React",
-    "Teach me prompt engineering basics",
-    "Summarize this topic as flashcards",
-    "Turn notes into a study plan"
-  ],
-  research: [
-    "Compare the best AI models for coding",
-    "Find models for voice-based assistants",
-    "Research new multimodal releases",
-    "Summarize current model tradeoffs",
-    "Build a shortlist by budget and latency"
-  ]
-};
-
-const categoryTabs = [
-  { id: "recruiting", label: "Recruiting", icon: "<>" },
-  { id: "prototype", label: "Create a prototype", icon: "</>" },
-  { id: "business", label: "Build a business", icon: "[]" },
-  { id: "learn", label: "Help me learn", icon: "||" },
-  { id: "research", label: "Research", icon: "o" }
-] as const;
 
 const actionPills = [
   { id: "mic", title: "Voice recording", accent: "border-[#d9c6ff] bg-[#faf6ff] text-[#7c57d8]" },
@@ -133,22 +115,36 @@ const ActionIcon = ({ id }: { id: (typeof actionPills)[number]["id"] }): JSX.Ele
 
 export const HeroSection = ({
   content,
+  language,
   searchResults,
+  workflowCategories,
   onSearchNavigate,
-  onNavigate
+  onNavigate,
+  onSubmitPrompt
 }: HeroSectionProps): JSX.Element => {
   const [query, setQuery] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<(typeof categoryTabs)[number]["id"]>("recruiting");
+  const [activeTab, setActiveTab] = useState<string>(
+    workflowCategories[0]?.id ?? "recruiting"
+  );
   const [attachments, setAttachments] = useState<HeroAttachment[]>([]);
-  const [status, setStatus] = useState<string>("Click any suggestion to fill the search box, then press Let's go");
-  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [status, setStatus] = useState<string>(t(language, "hero_status_default"));
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isCameraOn, setIsCameraOn] = useState<boolean>(false);
+  const [isVideoRecording, setIsVideoRecording] = useState<boolean>(false);
   const [isScreenSharing, setIsScreenSharing] = useState<boolean>(false);
+  const [cameraTick, setCameraTick] = useState<number>(0);
   const [screenShareTick, setScreenShareTick] = useState<number>(0);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraRecorderRef = useRef<MediaRecorder | null>(null);
+  const cameraChunksRef = useRef<Blob[]>([]);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -167,7 +163,31 @@ export const HeroSection = ({
       .slice(0, 5);
   }, [query, searchResults]);
 
+  const categoryTabs = useMemo(() => workflowCategories, [workflowCategories]);
+
+  const activeCategory = useMemo(
+    () =>
+      categoryTabs.find((tab) => tab.id === activeTab) ?? categoryTabs[0] ?? null,
+    [activeTab, categoryTabs]
+  );
+
+  useEffect(() => {
+    if (!categoryTabs.length) {
+      return;
+    }
+
+    if (!categoryTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(categoryTabs[0].id);
+    }
+  }, [activeTab, categoryTabs]);
+
+  useEffect(() => {
+    setStatus(t(language, "hero_status_default"));
+  }, [language]);
+
   const visibleSuggestions = useMemo(() => {
+    const activeSuggestions = activeCategory?.suggestions ?? [];
+
     if (query.trim()) {
       if (filteredResults.length > 0) {
         return filteredResults.map((result) => ({
@@ -178,21 +198,27 @@ export const HeroSection = ({
         }));
       }
 
-      return categorySuggestions[activeTab].slice(0, 5).map((item, index) => ({
+      return activeSuggestions.slice(0, 5).map((item, index) => ({
         id: `${activeTab}-${index}`,
         label: item,
-        subtitle: "Suggested workflow",
+        subtitle: t(language, "hero_workflow_suggestion"),
         type: "suggestion" as const
       }));
     }
 
-    return categorySuggestions[activeTab].map((item, index) => ({
+    return activeSuggestions.map((item, index) => ({
       id: `${activeTab}-${index}`,
       label: item,
-      subtitle: "Suggested workflow",
+      subtitle: t(language, "hero_workflow_suggestion"),
       type: "suggestion" as const
     }));
-  }, [activeTab, filteredResults, query]);
+  }, [activeCategory, activeTab, filteredResults, language, query]);
+
+  useEffect(() => {
+    if (cameraVideoRef.current && cameraStreamRef.current) {
+      cameraVideoRef.current.srcObject = cameraStreamRef.current;
+    }
+  }, [cameraTick]);
 
   useEffect(() => {
     if (screenVideoRef.current && screenStreamRef.current) {
@@ -202,7 +228,10 @@ export const HeroSection = ({
 
   useEffect(() => {
     return () => {
+      speechRecognitionRef.current?.stop();
       mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      cameraRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -227,7 +256,8 @@ export const HeroSection = ({
       id: `${kind}-${file.name}-${file.lastModified}-${index}`,
       kind,
       name: file.name,
-      previewUrl: kind === "video" ? URL.createObjectURL(file) : undefined,
+      previewUrl:
+        kind === "video" || kind === "camera" ? URL.createObjectURL(file) : undefined,
       sizeLabel: formatFileSize(file.size)
     }));
 
@@ -240,21 +270,219 @@ export const HeroSection = ({
   };
 
   const handleSubmit = (): void => {
+    const trimmedQuery = query.trim();
     const firstResult = filteredResults[0];
 
-    if (firstResult) {
+    if (trimmedQuery && firstResult) {
       onSearchNavigate(firstResult);
+      return;
+    }
+
+    if (trimmedQuery) {
+      onSubmitPrompt(trimmedQuery);
       return;
     }
 
     onNavigate("chat-hub");
   };
 
-  const toggleVoiceRecording = async (): Promise<void> => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop();
-      setIsRecording(false);
-      setStatus("Voice recording saved");
+  const speakResponse = (message: string): void => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopCameraStream = (): void => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setIsCameraOn(false);
+    setCameraTick((value) => value + 1);
+  };
+
+  const startVoiceToVoice = async (): Promise<void> => {
+    if (isListening) {
+      speechRecognitionRef.current?.stop();
+      setIsListening(false);
+      setStatus("Voice input stopped");
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setStatus("Voice input is not available");
+      return;
+    }
+
+    const browserWindow = window as BrowserWindow;
+    const SpeechRecognitionCtor =
+      browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.mediaDevices &&
+        typeof navigator.mediaDevices.getUserMedia === "function" &&
+        typeof MediaRecorder !== "undefined"
+      ) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const recorder = new MediaRecorder(stream);
+          audioChunksRef.current = [];
+
+          recorder.ondataavailable = (event: BlobEvent) => {
+            if (event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+
+          recorder.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+            const previewUrl = URL.createObjectURL(audioBlob);
+
+            setAttachments((current) => [
+              ...current,
+              {
+                id: `audio-${Date.now()}`,
+                kind: "audio",
+                name: "voice-note.webm",
+                previewUrl,
+                sizeLabel: formatFileSize(audioBlob.size)
+              }
+            ]);
+
+            stream.getTracks().forEach((track) => track.stop());
+            mediaRecorderRef.current = null;
+            setStatus("Voice note attached");
+          };
+
+          mediaRecorderRef.current = recorder;
+          recorder.start();
+          setIsListening(true);
+          setStatus("Recording voice note...");
+          return;
+        } catch {
+          setStatus("Microphone permission was denied");
+          return;
+        }
+      }
+
+      setStatus("Voice input is not supported in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    speechRecognitionRef.current = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join(" ")
+        .trim();
+
+      if (!transcript) {
+        return;
+      }
+
+      setQuery(transcript);
+      const spokenReply = `I heard ${transcript}. Press Let's go to continue.`;
+      setStatus(spokenReply);
+      speakResponse(spokenReply);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      setStatus("Voice input failed. Please try again.");
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+    recognition.start();
+    setIsListening(true);
+    setStatus("Listening... speak now");
+  };
+
+  const toggleCameraCapture = async (): Promise<void> => {
+    if (isCameraOn) {
+      stopCameraStream();
+      setStatus("Camera preview stopped");
+      return;
+    }
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      imageInputRef.current?.click();
+      setStatus("Camera preview unsupported. Use image upload instead.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false
+      });
+
+      cameraStreamRef.current = stream;
+      setIsCameraOn(true);
+      setStatus("Camera preview is live");
+      setCameraTick((value) => value + 1);
+    } catch {
+      imageInputRef.current?.click();
+      setStatus("Camera permission denied. Use image upload instead.");
+    }
+  };
+
+  const capturePhotoFromCamera = (): void => {
+    if (!cameraVideoRef.current) {
+      return;
+    }
+
+    const video = cameraVideoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setStatus("Camera capture is unavailable");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setStatus("Camera capture failed");
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(blob);
+      setAttachments((current) => [
+        ...current,
+        {
+          id: `camera-${Date.now()}`,
+          kind: "camera",
+          name: `camera-shot-${Date.now()}.png`,
+          previewUrl,
+          sizeLabel: formatFileSize(blob.size)
+        }
+      ]);
+      setStatus("Photo captured from camera");
+    }, "image/png");
+  };
+
+  const toggleVideoRecording = async (): Promise<void> => {
+    if (isVideoRecording) {
+      cameraRecorderRef.current?.stop();
+      setIsVideoRecording(false);
+      setStatus("Finishing video recording...");
       return;
     }
 
@@ -264,46 +492,56 @@ export const HeroSection = ({
       typeof navigator.mediaDevices.getUserMedia !== "function" ||
       typeof MediaRecorder === "undefined"
     ) {
-      setStatus("Voice recording is not supported in this browser");
+      videoInputRef.current?.click();
+      setStatus("Live video recording unsupported. Use video upload instead.");
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
+      const stream =
+        cameraStreamRef.current ??
+        (await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: true
+        }));
 
+      cameraStreamRef.current = stream;
+      setIsCameraOn(true);
+      setCameraTick((value) => value + 1);
+
+      const recorder = new MediaRecorder(stream);
+      cameraChunksRef.current = [];
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          cameraChunksRef.current.push(event.data);
         }
       };
-
       recorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const previewUrl = URL.createObjectURL(audioBlob);
+        const videoBlob = new Blob(cameraChunksRef.current, { type: "video/webm" });
+        const previewUrl = URL.createObjectURL(videoBlob);
 
         setAttachments((current) => [
           ...current,
           {
-            id: `audio-${Date.now()}`,
-            kind: "audio",
-            name: "voice-note.webm",
+            id: `video-${Date.now()}`,
+            kind: "video",
+            name: "camera-recording.webm",
             previewUrl,
-            sizeLabel: formatFileSize(audioBlob.size)
+            sizeLabel: formatFileSize(videoBlob.size)
           }
         ]);
 
-        stream.getTracks().forEach((track) => track.stop());
-        mediaRecorderRef.current = null;
+        cameraRecorderRef.current = null;
+        setStatus("Camera video attached");
       };
 
-      mediaRecorderRef.current = recorder;
+      cameraRecorderRef.current = recorder;
       recorder.start();
-      setIsRecording(true);
-      setStatus("Recording voice note...");
+      setIsVideoRecording(true);
+      setStatus("Recording video from camera...");
     } catch {
-      setStatus("Microphone permission was denied");
+      videoInputRef.current?.click();
+      setStatus("Camera permission denied. Use video upload instead.");
     }
   };
 
@@ -390,7 +628,7 @@ export const HeroSection = ({
                       handleSubmit();
                     }
                   }}
-                  placeholder="Click here and type anything or just say hi"
+                  placeholder={t(language, "hero_search_placeholder")}
                   type="text"
                   value={query}
                 />
@@ -418,17 +656,24 @@ export const HeroSection = ({
               <div className="flex flex-wrap items-center gap-2">
                 {actionPills.map((pill) => {
                   const isActive =
-                    (pill.id === "mic" && isRecording) ||
+                    (pill.id === "mic" && isListening) ||
+                    (pill.id === "image" && isCameraOn) ||
+                    (pill.id === "video" && isVideoRecording) ||
                     (pill.id === "screen" && isScreenSharing);
 
                   const handleClick = (): void => {
                     if (pill.id === "mic") {
-                      void toggleVoiceRecording();
+                      void startVoiceToVoice();
                       return;
                     }
 
-                    if (pill.id === "file" || pill.id === "image") {
+                    if (pill.id === "file") {
                       fileInputRef.current?.click();
+                      return;
+                    }
+
+                    if (pill.id === "image") {
+                      void toggleCameraCapture();
                       return;
                     }
 
@@ -465,7 +710,7 @@ export const HeroSection = ({
                   onClick={() => onNavigate("agents")}
                   type="button"
                 >
-                  Agent +
+                  {t(language, "hero_agent_plus")}
                 </button>
               </div>
 
@@ -474,13 +719,14 @@ export const HeroSection = ({
                 onClick={handleSubmit}
                 type="button"
               >
-                Let&apos;s go
+                {t(language, "hero_lets_go")}
               </button>
             </div>
           </div>
 
           <input accept="audio/*" className="hidden" onChange={(event) => addAttachments(event.target.files, "audio")} ref={audioInputRef} type="file" />
           <input className="hidden" multiple onChange={(event) => addAttachments(event.target.files, "file")} ref={fileInputRef} type="file" />
+          <input accept="image/*" capture="environment" className="hidden" onChange={(event) => addAttachments(event.target.files, "camera")} ref={imageInputRef} type="file" />
           <input accept="video/*" className="hidden" onChange={(event) => addAttachments(event.target.files, "video")} ref={videoInputRef} type="file" />
 
           <div className="mt-4 overflow-hidden rounded-[30px] border border-[#ddd4c9] bg-white shadow-[0_18px_40px_rgba(71,49,28,0.06)]">
@@ -514,7 +760,7 @@ export const HeroSection = ({
                       }
 
                       setQuery(item.label);
-                      setStatus("Suggestion added to search");
+                      setStatus(t(language, "hero_suggestion_added"));
                     }}
                     type="button"
                   >
@@ -531,6 +777,48 @@ export const HeroSection = ({
 
               <div className="mt-5 border-t border-[#ece3d8] pt-4 text-[12px] text-[#9d9185]">{status}</div>
 
+              {isCameraOn ? (
+                <div className="mt-4 rounded-[18px] border border-[#e7dacd] bg-[#fbf7f1] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8a7c6f]">
+                      {t(language, "hero_camera_preview")}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="rounded-full border border-[#dfcfbf] bg-white px-3 py-2 text-[10px] font-semibold text-[#5c5147]"
+                        onClick={capturePhotoFromCamera}
+                        type="button"
+                      >
+                        {t(language, "hero_capture_photo")}
+                      </button>
+                      <button
+                        className={`rounded-full px-3 py-2 text-[10px] font-semibold text-white ${
+                          isVideoRecording ? "bg-[#cf5a43]" : "bg-[#cf6929]"
+                        }`}
+                        onClick={() => void toggleVideoRecording()}
+                        type="button"
+                      >
+                        {isVideoRecording ? t(language, "hero_stop_video") : t(language, "hero_record_video")}
+                      </button>
+                      <button
+                        className="rounded-full border border-[#dfcfbf] bg-white px-3 py-2 text-[10px] font-semibold text-[#5c5147]"
+                        onClick={stopCameraStream}
+                        type="button"
+                      >
+                        {t(language, "hero_close_camera")}
+                      </button>
+                    </div>
+                  </div>
+                  <video
+                    autoPlay
+                    className="mt-3 max-h-[260px] w-full rounded-[14px] border border-[#e1d4c6] bg-[#1f1b18] object-cover"
+                    muted
+                    playsInline
+                    ref={cameraVideoRef}
+                  />
+                </div>
+              ) : null}
+
               {attachments.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {attachments.map((attachment) => (
@@ -538,11 +826,12 @@ export const HeroSection = ({
                       <div className="flex items-start gap-3">
                         <div>
                           <p className="font-semibold">{attachment.name}</p>
-                          <p className="mt-1 capitalize text-[#907f72]">{attachment.kind}{attachment.sizeLabel ? ` · ${attachment.sizeLabel}` : ""}</p>
+                          <p className="mt-1 capitalize text-[#907f72]">{attachment.kind}{attachment.sizeLabel ? ` - ${attachment.sizeLabel}` : ""}</p>
                         </div>
-                        <button className="text-[#c26f38]" onClick={() => removeAttachment(attachment.id)} type="button">Remove</button>
+                        <button className="text-[#c26f38]" onClick={() => removeAttachment(attachment.id)} type="button">{t(language, "remove")}</button>
                       </div>
                       {attachment.kind === "audio" && attachment.previewUrl ? <audio className="mt-2 w-full" controls src={attachment.previewUrl} /> : null}
+                      {attachment.kind === "camera" && attachment.previewUrl ? <img alt={attachment.name} className="mt-2 max-h-[160px] w-full rounded-[12px] border border-[#e4d7ca] object-cover" src={attachment.previewUrl} /> : null}
                       {attachment.kind === "video" && attachment.previewUrl ? <video className="mt-2 max-h-[160px] w-full rounded-[12px] border border-[#e4d7ca]" controls src={attachment.previewUrl} /> : null}
                     </article>
                   ))}
@@ -551,7 +840,7 @@ export const HeroSection = ({
 
               {isScreenSharing ? (
                 <div className="mt-4 rounded-[18px] border border-[#e7dacd] bg-[#fbf7f1] p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8a7c6f]">Screen Share Preview</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8a7c6f]">{t(language, "hero_screen_share_preview")}</p>
                   <video autoPlay className="mt-3 max-h-[260px] w-full rounded-[14px] border border-[#e1d4c6] bg-[#1f1b18] object-cover" muted playsInline ref={screenVideoRef} />
                 </div>
               ) : null}
@@ -563,7 +852,9 @@ export const HeroSection = ({
               <button
                 key={action.id}
                 className="rounded-[22px] border border-[#ddd4c9] bg-white px-4 py-5 text-center shadow-[0_8px_18px_rgba(71,49,28,0.05)] transition hover:-translate-y-0.5 hover:border-[#d7c4b2]"
-                onClick={() => onNavigate(action.targetPage ?? "chat-hub")}
+                onClick={() => {
+                  onSubmitPrompt(action.label);
+                }}
                 type="button"
               >
                 <div className="text-[26px]">{action.icon}</div>

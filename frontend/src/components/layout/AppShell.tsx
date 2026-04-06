@@ -1,25 +1,40 @@
 import type { PropsWithChildren } from "react";
 import type { AppPage, CurrentUser } from "../../types/api";
+import { supportedLanguages } from "../../lib/i18n";
 
 type AppShellProps = PropsWithChildren<{
   currentPage: AppPage;
+  language: string;
   onNavigate: (page: AppPage) => void;
+  onLanguageChange: (language: string) => void;
   onSignOut: () => void;
+  labels: {
+    chatHub: string;
+    marketplace: string;
+    agents: string;
+    discoverNew: string;
+    signIn: string;
+    signOut: string;
+    getStartedFree: string;
+  };
   user: CurrentUser | null;
 }>;
 
 export const AppShell = ({
   children,
   currentPage,
+  language,
+  labels,
+  onLanguageChange,
   onNavigate,
   onSignOut,
   user
 }: AppShellProps): JSX.Element => {
   const navItems: Array<{ id: AppPage; label: string }> = [
-    { id: "chat-hub", label: "Chat Hub" },
-    { id: "marketplace", label: "Marketplace" },
-    { id: "agents", label: "Agents" },
-    { id: "discover-new", label: "Discover New" }
+    { id: "chat-hub", label: labels.chatHub },
+    { id: "marketplace", label: labels.marketplace },
+    { id: "agents", label: labels.agents },
+    { id: "discover-new", label: labels.discoverNew }
   ];
 
   return (
@@ -62,13 +77,17 @@ export const AppShell = ({
             </nav>
 
             <div className="flex items-center gap-2">
-              <button
-                className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f] transition hover:border-[#cdb8a4]"
-                onClick={() => onNavigate("settings")}
-                type="button"
+              <select
+                className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f] outline-none transition hover:border-[#cdb8a4]"
+                onChange={(event) => onLanguageChange(event.target.value)}
+                value={language}
               >
-                EN
-              </button>
+                {supportedLanguages.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.code.toUpperCase()}
+                  </option>
+                ))}
+              </select>
               {user ? (
                 <>
                   <span className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f]">
@@ -79,7 +98,7 @@ export const AppShell = ({
                     onClick={onSignOut}
                     type="button"
                   >
-                    Sign out
+                    {labels.signOut}
                   </button>
                 </>
               ) : (
@@ -89,14 +108,14 @@ export const AppShell = ({
                     onClick={() => onNavigate("auth")}
                     type="button"
                   >
-                    Sign in
+                    {labels.signIn}
                   </button>
                   <button
                     className="rounded-full bg-[#c76b2c] px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-[#b55f25]"
                     onClick={() => onNavigate("auth")}
                     type="button"
                   >
-                    Get Started Free
+                    {labels.getStartedFree}
                   </button>
                 </>
               )}

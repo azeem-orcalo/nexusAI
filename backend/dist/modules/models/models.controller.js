@@ -31,6 +31,9 @@ let ModelsController = class ModelsController {
     providers() {
         return this.modelsService.providers();
     }
+    filters() {
+        return this.modelsService.filters();
+    }
     findOne(id) {
         return this.modelsService.findOne(id);
     }
@@ -64,6 +67,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], ModelsController.prototype, "providers", null);
+__decorate([
+    (0, common_1.Get)("filters"),
+    (0, swagger_1.ApiOperation)({ summary: "Get marketplace filter metadata" }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], ModelsController.prototype, "filters", null);
 __decorate([
     (0, common_1.Get)(":id"),
     (0, swagger_1.ApiOperation)({ summary: "Get full model details" }),

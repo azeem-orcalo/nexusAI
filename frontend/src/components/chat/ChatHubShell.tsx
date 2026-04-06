@@ -1,973 +1,384 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  ChatAction,
-  ChatModel,
-  ChatPromptOption,
-  ChatSuggestion
-} from "../../data/mock/chatHub";
-import { ChatWelcomePanel } from "./ChatWelcomePanel";
+import type { ChatAction, ChatModel, ChatPromptOption, ChatSuggestion } from "../../data/mock/chatHub";
+import { api } from "../../lib/api";
+import { t } from "../../lib/i18n";
 
-type AppPage =
-  | "chat-hub"
-  | "marketplace"
-  | "agents"
-  | "discover-new"
-  | "dashboard"
-  | "api-access"
-  | "reviews"
-  | "research";
+type AppPage = "chat-hub" | "marketplace" | "agents" | "discover-new" | "dashboard" | "api-access" | "reviews" | "research";
+type InitialChatRequest = { id: string; prompt: string };
+type ChatHubShellProps = { language: string; models: ChatModel[]; quickActions: ChatAction[]; createActions: ChatAction[]; analysisActions: ChatAction[]; promptOptions: ChatPromptOption[]; suggestionChips: ChatSuggestion[]; footerPrompts: string[]; onNavigate: (page: AppPage) => void; initialRequest?: InitialChatRequest | null; onInitialMessageHandled?: () => void; };
+type ComposerAttachment = { id: string; kind: "audio" | "camera" | "file" | "screen" | "video"; name: string; previewUrl?: string; sizeLabel?: string; stream?: MediaStream; };
+type ChatMessage = { id: string; text: string; role: "assistant" | "user"; attachments?: ComposerAttachment[]; };
+type SpeechRec = { continuous: boolean; interimResults: boolean; lang: string; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal?: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void; };
+type BrowserWindow = Window & typeof globalThis & { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec; };
 
-type ChatHubShellProps = {
-  models: ChatModel[];
-  quickActions: ChatAction[];
-  createActions: ChatAction[];
-  analysisActions: ChatAction[];
-  promptOptions: ChatPromptOption[];
-  suggestionChips: ChatSuggestion[];
-  footerPrompts: string[];
-  onNavigate: (page: AppPage) => void;
+const colors = { audio: "border-[#ead9cb] bg-[#fff4eb] text-[#b86835]", camera: "border-[#d9e8ff] bg-[#f2f7ff] text-[#356ec4]", file: "border-[#d8e7ff] bg-[#f1f7ff] text-[#3971c6]", screen: "border-[#d7efe3] bg-[#eefaf3] text-[#27815a]", video: "border-[#f2d7dd] bg-[#fff1f4] text-[#ba4962]" } as const;
+const promptAccents = ["text-[#e07d34]","text-[#e08c49]","text-[#8b78d7]","text-[#e07d34]","text-[#64a0d7]","text-[#8f73c9]"] as const;
+const toolButtonStyles = { voice: "border-[#ded0ff] bg-[#f6f1ff] text-[#7c55e5]", file: "border-[#ffd89d] bg-[#fff6e8] text-[#df8b1d]", camera: "border-[#cfe0ff] bg-[#eff6ff] text-[#3b72ce]", video: "border-[#f5c9d1] bg-[#fff2f4] text-[#cf5972]", screen: "border-[#cde9da] bg-[#edf9f3] text-[#2d8f62]" } as const;
+const CHAT_SESSION_STORAGE_KEY = "nexusai-chat-session";
+
+const sizeLabel = (size: number): string => size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / (1024 * 1024)).toFixed(1)} MB`;
+
+const Icon = ({ kind, className = "h-4 w-4" }: { kind: "voice" | "file" | "camera" | "video" | "screen" | "send" | "search" | "sparkle"; className?: string; }): JSX.Element => {
+  const common = { className, fill: "none", viewBox: "0 0 24 24" };
+  if (kind === "voice") return <svg {...common}><rect x="9" y="4" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M6.5 11.5a5.5 5.5 0 1 0 11 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M12 17v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+  if (kind === "file") return <svg {...common}><path d="M9 6.5h7l2.5 2.5V18a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" /><path d="M16 6.5V9h2.5" stroke="currentColor" strokeWidth="1.8" /></svg>;
+  if (kind === "camera") return <svg {...common}><rect x="3.5" y="6.5" width="17" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /><path d="M8 6.5 9.5 4.5h5L16 6.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+  if (kind === "video") return <svg {...common}><rect x="4" y="6.5" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="m15 10 4.5-2v8L15 14" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
+  if (kind === "screen") return <svg {...common}><rect x="4" y="5.5" width="16" height="10.5" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M9.5 19h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M12 16v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+  if (kind === "search") return <svg {...common}><circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" strokeWidth="1.8" /><path d="m15 15 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+  if (kind === "sparkle") return <svg {...common}><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" fill="currentColor" /></svg>;
+  return <svg {...common}><path d="M5 12h11" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="m12 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
 };
 
-type ComposerAttachment = {
-  id: string;
-  kind: "audio" | "file" | "screen" | "video";
-  name: string;
-  previewUrl?: string;
-  sizeLabel?: string;
-};
-
-type ChatMessage = {
-  id: string;
-  text: string;
-  role: "assistant" | "user";
-  status?: string;
-  attachments?: ComposerAttachment[];
-};
-
-type ConversationItem = {
-  id: string;
-  title: string;
-  summary: string;
-  tag: string;
-  updatedAt: string;
-};
-
-const actionColorMap: Record<ComposerAttachment["kind"], string> = {
-  audio: "border-[#ead9cb] bg-[#fff4eb] text-[#b86835]",
-  file: "border-[#d8e7ff] bg-[#f1f7ff] text-[#3971c6]",
-  screen: "border-[#d7efe3] bg-[#eefaf3] text-[#27815a]",
-  video: "border-[#f2d7dd] bg-[#fff1f4] text-[#ba4962]"
-};
-
-const conversationsSeed: ConversationItem[] = [
-  {
-    id: "launch-plan",
-    title: "Launch Strategy Sprint",
-    summary: "Finalize rollout messaging, demo assets, and handoff notes.",
-    tag: "Strategy",
-    updatedAt: "2 min ago"
-  },
-  {
-    id: "sales-copilot",
-    title: "Sales Copilot Build",
-    summary: "Create prompts, attach call notes, and review deal blockers.",
-    tag: "Agent",
-    updatedAt: "18 min ago"
-  },
-  {
-    id: "research-brief",
-    title: "Research Brief",
-    summary: "Collect sources, compare models, and summarize key findings.",
-    tag: "Research",
-    updatedAt: "36 min ago"
-  },
-  {
-    id: "support-workflow",
-    title: "Support Workflow",
-    summary: "Map escalation paths and create reusable support responses.",
-    tag: "Ops",
-    updatedAt: "1 hr ago"
-  }
-];
-
-const formatBytes = (size: number): string => {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const ComposerIcon = ({
-  kind,
-  className = "h-[18px] w-[18px]"
-}: {
-  kind: "voice" | "file" | "audio" | "video" | "screen" | "send" | "search";
-  className?: string;
-}): JSX.Element => {
-  if (kind === "voice") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <rect x="9" y="4" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M6.5 11.5a5.5 5.5 0 1 0 11 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-        <path d="M12 17v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (kind === "file") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <path d="M9 6.5h7l2.5 2.5V18a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M16 6.5V9h2.5" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (kind === "audio") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <path d="M9 15V9a3 3 0 1 1 6 0v6" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M7 13.5a5 5 0 0 0 10 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-        <path d="M12 18v2.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (kind === "video") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <rect x="4" y="6.5" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <path d="m15 10 4.5-2v8L15 14" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (kind === "screen") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <rect x="4" y="5.5" width="16" height="10.5" rx="2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M9.5 19h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-        <path d="M12 16v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  if (kind === "search") {
-    return (
-      <svg className={className} fill="none" viewBox="0 0 24 24">
-        <circle cx="10.5" cy="10.5" r="5.5" stroke="currentColor" strokeWidth="1.8" />
-        <path d="m15 15 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M5 12h11" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      <path d="m12 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-};
-
-const ActionGroup = ({
-  title,
-  actions,
-  onActionClick
-}: {
-  title: string;
-  actions: ChatAction[];
-  onActionClick: (actionId: string) => void;
-}): JSX.Element => {
-  return (
-    <div className="rounded-[24px] border border-[#eadfce] bg-white p-4 shadow-[0_16px_40px_rgba(83,59,31,0.08)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-        {title}
-      </p>
-      <div className="mt-3 space-y-2">
-        {actions.map((action) => (
-          <button
-            key={action.id}
-            className="flex w-full items-center justify-between rounded-[16px] border border-[#eee2d4] bg-[#fcfaf7] px-3 py-3 text-left text-[13px] text-[#40352d] transition hover:border-[#d8c5b3] hover:bg-white"
-            onClick={() => onActionClick(action.id)}
-            type="button"
-          >
-            <span className="flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#eadccc] bg-white text-[13px] text-[#c66b2d]">
-                {action.icon.slice(0, 1) || "+"}
-              </span>
-              <span>{action.label}</span>
-            </span>
-            <span className="text-[#b6a596]">+</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-export const ChatHubShell = ({
-  models,
-  quickActions,
-  createActions,
-  analysisActions,
-  promptOptions,
-  suggestionChips,
-  footerPrompts,
-  onNavigate
-}: ChatHubShellProps): JSX.Element => {
-  const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [activeModelId, setActiveModelId] = useState(
-    models.find((model) => model.active)?.id ?? models[0]?.id ?? ""
-  );
-  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [isSharingScreen, setIsSharingScreen] = useState(false);
-  const [composerStatus, setComposerStatus] = useState("Ready to collaborate");
-  const [modelQuery, setModelQuery] = useState("");
-  const [conversationQuery, setConversationQuery] = useState("");
-  const [selectedConversationId, setSelectedConversationId] = useState(conversationsSeed[0]?.id ?? "");
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const audioInputRef = useRef<HTMLInputElement | null>(null);
-  const videoInputRef = useRef<HTMLInputElement | null>(null);
+const ScreenSharePreview = ({ stream }: { stream: MediaStream }): JSX.Element => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    return () => {
-      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
-      pendingAttachments.forEach((attachment) => {
-        if (attachment.previewUrl) {
-          URL.revokeObjectURL(attachment.previewUrl);
-        }
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return <video autoPlay className="mt-2 max-h-[180px] w-full rounded-[12px] border border-current/10 bg-[#1e1a18]" muted playsInline ref={videoRef} />;
+};
+
+export const ChatHubShell = ({ language, models, quickActions, createActions, analysisActions, promptOptions, suggestionChips, footerPrompts, onNavigate, initialRequest, onInitialMessageHandled }: ChatHubShellProps): JSX.Element => {
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState("");
+  const [activeModelId, setActiveModelId] = useState(models.find((m) => m.active)?.id ?? models[0]?.id ?? "");
+  const [status, setStatus] = useState(t(language, "ready_to_collaborate"));
+  const [modelQuery, setModelQuery] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const speechRef = useRef<SpeechRec | null>(null);
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const cameraRecorderRef = useRef<MediaRecorder | null>(null);
+  const cameraChunksRef = useRef<Blob[]>([]);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const imageRef = useRef<HTMLInputElement | null>(null);
+  const audioRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLInputElement | null>(null);
+  const autoSentRequestRef = useRef<string>("");
+  const messagesRef = useRef<ChatMessage[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    const existingSessionId = window.localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+    const nextSessionId = existingSessionId || `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    if (!existingSessionId) {
+      window.localStorage.setItem(CHAT_SESSION_STORAGE_KEY, nextSessionId);
+    }
+
+    setSessionId(nextSessionId);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    void api
+      .chatHistory(sessionId)
+      .then((history) => {
+        setMessages(
+          history.messages.map((message, index) => ({
+            id: `${message.role}-${message.createdAt ?? index}`,
+            text: message.text,
+            role: message.role,
+            attachments: message.attachments?.map((attachment, attachmentIndex) => ({
+              id: `${message.role}-${index}-${attachment.kind}-${attachmentIndex}`,
+              kind: attachment.kind,
+              name: attachment.name,
+              sizeLabel: attachment.sizeLabel
+            }))
+          }))
+        );
+      })
+      .catch(() => {
+        setStatus("Unable to load saved chat history");
       });
-    };
-  }, [pendingAttachments]);
+  }, [sessionId]);
 
-  const activeModel =
-    models.find((model) => model.id === activeModelId) ?? models[0] ?? null;
+  useEffect(() => () => {
+    speechRef.current?.stop();
+    audioRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    cameraRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    messagesRef.current.forEach((message) => message.attachments?.forEach((item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl)));
+  }, []);
 
+  useEffect(() => {
+    if (cameraVideoRef.current && cameraStreamRef.current) cameraVideoRef.current.srcObject = cameraStreamRef.current;
+  }, [isCameraOn]);
+
+  const activeModel = models.find((m) => m.id === activeModelId) ?? models[0] ?? null;
   const filteredModels = useMemo(() => {
-    const query = modelQuery.trim().toLowerCase();
-
-    if (!query) {
-      return models;
-    }
-
-    return models.filter((model) => {
-      const haystack = `${model.name} ${model.provider}`.toLowerCase();
-      return haystack.includes(query);
-    });
+    const q = modelQuery.trim().toLowerCase();
+    return q ? models.filter((m) => `${m.name} ${m.provider}`.toLowerCase().includes(q)) : models;
   }, [modelQuery, models]);
+  const shared = messages.flatMap((m) => m.attachments ?? []);
 
-  const filteredConversations = useMemo(() => {
-    const query = conversationQuery.trim().toLowerCase();
+  const sendAttachmentMessage = async (
+    attachments: ComposerAttachment[],
+    text: string
+  ): Promise<void> => {
+    const nextMessage = {
+      id: `user-${Date.now()}`,
+      text,
+      role: "user" as const,
+      attachments
+    };
 
-    if (!query) {
-      return conversationsSeed;
+    setMessages((current) => [...current, nextMessage]);
+
+    if (!sessionId) {
+      setStatus("Chat session is still loading");
+      return;
     }
 
-    return conversationsSeed.filter((conversation) => {
-      const haystack = `${conversation.title} ${conversation.summary} ${conversation.tag}`.toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [conversationQuery]);
+    setIsSending(true);
+    setStatus("Sending attachment to backend...");
 
-  const selectedConversation =
-    conversationsSeed.find((conversation) => conversation.id === selectedConversationId) ??
-    conversationsSeed[0] ??
-    null;
+    try {
+      const response = await api.chatRespond({
+        sessionId,
+        message: text,
+        modelId: activeModel?.id,
+        attachments: attachments.map((attachment) => ({
+          kind: attachment.kind,
+          name: attachment.name,
+          sizeLabel: attachment.sizeLabel
+        }))
+      });
 
-  const visibleMessages = messages.filter(
-    (message) => !message.status || message.status === selectedConversation?.id
-  );
+      const assistant: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        text: response.reply,
+        role: "assistant"
+      };
 
-  const pinnedMessages = visibleMessages.filter((message) => message.role === "assistant").slice(-2);
-  const sharedAttachments = visibleMessages.flatMap((message) => message.attachments ?? []).slice(-6);
+      setMessages((current) => [...current, assistant]);
+      setStatus("Attachment processed by backend");
+    } catch {
+      const assistant: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        text: "Attachment backend tak gaya nahi. Please server check karein aur dobara try karein.",
+        role: "assistant"
+      };
+
+      setMessages((current) => [...current, assistant]);
+      setStatus("Attachment response failed");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const routeAction = (actionId: string): void => {
-    if (actionId === "marketplace") {
-      onNavigate("marketplace");
-      return;
-    }
-
-    if (actionId === "agent") {
-      onNavigate("agents");
-      return;
-    }
-
-    if (actionId === "analysis" || actionId === "research") {
-      onNavigate("research");
-      return;
-    }
-
-    const selectedPrompt = footerPrompts.find((prompt) =>
-      prompt.toLowerCase().includes(actionId.toLowerCase())
-    );
-
-    if (selectedPrompt) {
-      setDraft(selectedPrompt);
-      setComposerStatus("Action added to composer");
-      return;
-    }
-
-    setComposerStatus("Action ready in composer");
+    if (actionId === "marketplace") { onNavigate("marketplace"); return; }
+    if (actionId === "agent") { onNavigate("agents"); return; }
+    if (actionId === "analysis" || actionId === "research") { onNavigate("research"); return; }
+    const selectedPrompt = footerPrompts.find((prompt) => prompt.toLowerCase().includes(actionId.toLowerCase()));
+    if (selectedPrompt) { setDraft(selectedPrompt); setStatus("Action added to composer"); return; }
+    setStatus("Action ready in composer");
   };
 
-  const addAttachments = (
-    files: FileList | null,
-    kind: ComposerAttachment["kind"]
-  ): void => {
-    if (!files || files.length === 0) {
-      return;
-    }
-
-    const nextAttachments = Array.from(files).map((file, index) => ({
-      id: `${kind}-${Date.now()}-${index}`,
-      kind,
-      name: file.name,
-      previewUrl: kind === "video" || kind === "audio" ? URL.createObjectURL(file) : undefined,
-      sizeLabel: formatBytes(file.size)
-    }));
-
-    setPendingAttachments((current) => [...current, ...nextAttachments]);
-    setComposerStatus(`${nextAttachments.length} attachment added`);
+  const addFiles = (files: FileList | null, kind: ComposerAttachment["kind"]): void => {
+    if (!files?.length) return;
+    const attachments = Array.from(files).map((file, index) => ({ id: `${kind}-${Date.now()}-${index}`, kind, name: file.name, previewUrl: kind === "audio" || kind === "camera" || kind === "video" ? URL.createObjectURL(file) : undefined, sizeLabel: sizeLabel(file.size) }));
+    const attachmentText = attachments.length > 1 ? `Shared ${attachments.length} ${kind} files` : `Shared ${kind} attachment`;
+    void sendAttachmentMessage(attachments, attachmentText);
   };
+  const stopCamera = (): void => { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); cameraStreamRef.current = null; setIsCameraOn(false); setIsRecordingVideo(false); };
 
-  const handleRemoveAttachment = (attachmentId: string): void => {
-    setPendingAttachments((current) => {
-      const found = current.find((attachment) => attachment.id === attachmentId);
-      if (found?.previewUrl) {
-        URL.revokeObjectURL(found.previewUrl);
-      }
-      return current.filter((attachment) => attachment.id !== attachmentId);
-    });
-  };
-
-  const toggleVoiceRecording = async (): Promise<void> => {
-    if (isRecordingVoice && mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
-      mediaRecorderRef.current = null;
-      setIsRecordingVoice(false);
-      setComposerStatus("Voice note saved to attachments");
+  const handleVoice = async (): Promise<void> => {
+    if (isListening) {
+      speechRef.current?.stop();
+      audioRecorderRef.current?.stop();
+      audioRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+      audioRecorderRef.current = null;
+      setIsListening(false);
+      setStatus("Voice stopped");
       return;
     }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setComposerStatus("Voice recording is not available in this browser");
-      return;
+    const browserWindow = window as BrowserWindow;
+    const SpeechCtor = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
+    if (SpeechCtor) {
+      const rec = new SpeechCtor();
+      speechRef.current = rec;
+      rec.continuous = false; rec.interimResults = true; rec.lang = "en-US";
+      rec.onresult = (event) => {
+        const results = Array.from(event.results);
+        const text = results.map((r) => r[0].transcript).join(" ").trim();
+        const isFinal = results.some((result) => result.isFinal);
+        if (text) {
+          setDraft(text);
+        }
+        if (text && isFinal) {
+          setStatus("Sending voice prompt...");
+          void handleSend(text);
+        }
+      };
+      rec.onerror = () => { setIsListening(false); setStatus("Voice input failed"); };
+      rec.onend = () => setIsListening(false);
+      rec.start(); setIsListening(true); setStatus("Listening for voice input..."); return;
     }
-
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setStatus("Voice recording is not available"); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-
-      recorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      });
-
-      recorder.addEventListener("stop", () => {
-        if (audioChunksRef.current.length === 0) {
-          return;
-        }
-
+      const recorder = new MediaRecorder(stream); audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        if (!audioChunksRef.current.length) return;
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        const previewUrl = URL.createObjectURL(blob);
-        setPendingAttachments((current) => [
-          ...current,
-          {
-            id: `audio-recording-${Date.now()}`,
-            kind: "audio",
-            name: `voice-note-${new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit"
-            })}.webm`,
-            sizeLabel: formatBytes(blob.size)
-          }
-        ]);
-      });
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecordingVoice(true);
-      setComposerStatus("Recording voice note");
-    } catch {
-      setComposerStatus("Microphone permission is required to record voice");
-    }
+        void sendAttachmentMessage([{ id: `audio-${Date.now()}`, kind: "audio", name: `voice-note-${Date.now()}.webm`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared voice note");
+      };
+      recorder.start(); audioRecorderRef.current = recorder; setIsListening(true); setStatus("Recording voice note...");
+    } catch { setStatus("Microphone permission is required"); }
   };
 
-  const toggleScreenShare = async (): Promise<void> => {
-    if (isSharingScreen && screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => track.stop());
-      screenStreamRef.current = null;
-      setIsSharingScreen(false);
-      setPendingAttachments((current) =>
-        current.filter((attachment) => attachment.kind !== "screen")
-      );
-      setComposerStatus("Screen sharing stopped");
-      return;
-    }
+  const handleCamera = async (): Promise<void> => {
+    if (isCameraOn) { stopCamera(); setStatus("Camera preview stopped"); return; }
+    if (!navigator.mediaDevices?.getUserMedia) { imageRef.current?.click(); setStatus("Camera unavailable. Use upload."); return; }
+    try { cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false }); setIsCameraOn(true); setStatus("Camera preview is live"); } catch { imageRef.current?.click(); setStatus("Camera permission denied"); }
+  };
 
-    if (!navigator.mediaDevices || !("getDisplayMedia" in navigator.mediaDevices)) {
-      setComposerStatus("Screen sharing is not supported in this browser");
-      return;
-    }
+  const capturePhoto = (): void => {
+    if (!cameraVideoRef.current) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = cameraVideoRef.current.videoWidth || 1280; canvas.height = cameraVideoRef.current.videoHeight || 720;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => { if (!blob) return; void sendAttachmentMessage([{ id: `camera-${Date.now()}`, kind: "camera", name: `camera-shot-${Date.now()}.png`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared camera photo"); }, "image/png");
+  };
 
+  const handleVideo = async (): Promise<void> => {
+    if (isRecordingVideo && cameraRecorderRef.current) { cameraRecorderRef.current.stop(); setIsRecordingVideo(false); setStatus("Finishing video recording..."); return; }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { videoRef.current?.click(); setStatus("Live video recording unavailable. Use upload."); return; }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const [track] = stream.getVideoTracks();
-      const screenName = track?.label || `screen-share-${Date.now()}`;
+      const stream = cameraStreamRef.current ?? await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+      cameraStreamRef.current = stream; setIsCameraOn(true);
+      const recorder = new MediaRecorder(stream); cameraChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) cameraChunksRef.current.push(event.data); };
+      recorder.onstop = () => { const blob = new Blob(cameraChunksRef.current, { type: recorder.mimeType || "video/webm" }); void sendAttachmentMessage([{ id: `video-${Date.now()}`, kind: "video", name: `camera-video-${Date.now()}.webm`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared camera video"); };
+      cameraRecorderRef.current = recorder; recorder.start(); setIsRecordingVideo(true); setStatus("Recording camera video...");
+    } catch { videoRef.current?.click(); setStatus("Camera permission denied"); }
+  };
 
-      screenStreamRef.current = stream;
-      setIsSharingScreen(true);
-      setPendingAttachments((current) => [
-        ...current.filter((attachment) => attachment.kind !== "screen"),
-        {
-          id: `screen-${Date.now()}`,
-          kind: "screen",
-          name: screenName,
-          sizeLabel: "Live preview"
-        }
-      ]);
-      setComposerStatus("Screen sharing is active");
+  const handleScreen = async (): Promise<void> => {
+    if (isSharingScreen && screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop()); screenStreamRef.current = null; setIsSharingScreen(false); setStatus("Screen sharing stopped"); return;
+    }
+    if (!navigator.mediaDevices || !("getDisplayMedia" in navigator.mediaDevices)) { setStatus("Screen sharing is not supported"); return; }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      const track = stream.getVideoTracks()[0];
+      screenStreamRef.current = stream; setIsSharingScreen(true);
+      void sendAttachmentMessage([{ id: `screen-${Date.now()}`, kind: "screen", name: track?.label || "screen-share", sizeLabel: "Live preview", stream }], "Started screen sharing");
+      track?.addEventListener("ended", () => { setIsSharingScreen(false); screenStreamRef.current = null; setStatus("Screen sharing stopped"); });
+    } catch { setStatus("Screen sharing requires permission"); }
+  };
 
-      track?.addEventListener("ended", () => {
-        setIsSharingScreen(false);
-        setPendingAttachments((current) =>
-          current.filter((attachment) => attachment.kind !== "screen")
-        );
-        setComposerStatus("Screen sharing stopped");
-      });
+  const handleSend = async (overrideText?: string): Promise<void> => {
+    const text = (overrideText ?? draft).trim();
+    if (isSending) { return; }
+    if (!sessionId) { setStatus("Chat session is still loading"); return; }
+    if (!text) { setStatus("Add a message to continue"); return; }
+    const user: ChatMessage = { id: `user-${Date.now()}`, text, role: "user" };
+    setMessages((current) => [...current, user]); setDraft(""); setIsSending(true); setStatus("Sending to backend...");
+    try {
+      const response = await api.chatRespond({ sessionId, message: text, modelId: activeModel?.id });
+      const assistant: ChatMessage = { id: `assistant-${Date.now()}`, text: response.reply, role: "assistant" };
+      setMessages((current) => [...current, assistant]); setStatus("Response received from backend");
     } catch {
-      setComposerStatus("Screen sharing requires permission");
+      const assistant: ChatMessage = { id: `assistant-${Date.now()}`, text: "Backend chat API se response nahi aa saka. Please backend server check karein aur dobara try karein.", role: "assistant" };
+      setMessages((current) => [...current, assistant]); setStatus("Backend response failed");
+    } finally {
+      setIsSending(false);
     }
   };
 
-  const handleSend = (): void => {
-    const trimmedDraft = draft.trim();
+  useEffect(() => {
+    const nextRequestId = initialRequest?.id ?? "";
+    const nextMessage = initialRequest?.prompt.trim() ?? "";
 
-    if (!trimmedDraft && pendingAttachments.length === 0) {
-      setComposerStatus("Add a message or attachment to continue");
+    if (!sessionId || !nextRequestId || !nextMessage) {
+      autoSentRequestRef.current = "";
       return;
     }
 
-    const nextUserMessage: ChatMessage = {
-      id: `message-${Date.now()}`,
-      text: trimmedDraft || "Shared attachments",
-      role: "user",
-      status: selectedConversation?.id,
-      attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined
-    };
+    if (isSending) {
+      return;
+    }
 
-    const assistantReply: ChatMessage = {
-      id: `assistant-${Date.now()}`,
-      text: trimmedDraft
-        ? `I am ready to help with "${trimmedDraft}". I can turn this into a plan, research brief, or agent workflow while keeping your uploaded context attached.`
-        : "I received your attachments and can help summarize them, extract actions, or turn them into a working plan.",
-      role: "assistant",
-      status: selectedConversation?.id
-    };
+    if (autoSentRequestRef.current === nextRequestId) {
+      return;
+    }
 
-    setMessages((current) => [...current, nextUserMessage, assistantReply]);
-    setDraft("");
-    setPendingAttachments([]);
-    setComposerStatus("Message sent");
-  };
+    autoSentRequestRef.current = nextRequestId;
+    setDraft(nextMessage);
+    void handleSend(nextMessage).finally(() => {
+      onInitialMessageHandled?.();
+    });
+  }, [initialRequest, isSending, onInitialMessageHandled, sessionId]);
+
+  const sections = { quick: quickActions, create: createActions, analysis: analysisActions };
 
   return (
-    <section className="min-h-[calc(100vh-53px)] bg-[#f7f3ee] px-4 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-[1600px] gap-4 xl:grid-cols-[280px_minmax(0,1fr)_310px]">
-        <aside className="space-y-4">
-          <div className="rounded-[28px] border border-[#eadfce] bg-white p-5 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-            <div className="inline-flex rounded-full border border-[#eadccf] bg-[#fff8f1] px-3 py-1 text-[11px] font-semibold text-[#ca6f33]">
-              Chat Hub
-            </div>
-            <h1 className="mt-4 text-[28px] font-semibold leading-[1.05] text-[#18120f]">
-              Design, discuss, and ship with one guided workspace.
-            </h1>
-            <p className="mt-3 text-[14px] leading-6 text-[#74695f]">
-              Your chat hub keeps voice, files, video, screen sharing, and model context together so every task stays actionable.
-            </p>
-
-            <button
-              className="mt-5 flex w-full items-center justify-center rounded-full bg-[#c9682d] px-4 py-3 text-[15px] font-semibold text-white transition hover:bg-[#b55c26]"
-              onClick={() => {
-                setSelectedConversationId(conversationsSeed[0]?.id ?? "");
-                setDraft("Help me create a step-by-step launch workspace.");
-                setComposerStatus("Starter prompt added");
-              }}
-              type="button"
-            >
-              Start a guided session
-            </button>
-          </div>
-
-          <div className="rounded-[28px] border border-[#eadfce] bg-white p-4 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]" htmlFor="conversation-search">
-              Search conversations
-            </label>
-            <div className="mt-3 flex items-center gap-3 rounded-[18px] border border-[#eadfce] bg-[#fbf8f4] px-4 py-3 text-[#9a8d80]">
-              <ComposerIcon kind="search" className="h-[16px] w-[16px]" />
-              <input
-                id="conversation-search"
-                className="w-full bg-transparent text-[14px] text-[#302720] outline-none placeholder:text-[#b3a598]"
-                onChange={(event) => setConversationQuery(event.target.value)}
-                placeholder="Find a chat, topic, or task"
-                value={conversationQuery}
-              />
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {filteredConversations.map((conversation) => {
-                const isActive = conversation.id === selectedConversationId;
-
-                return (
-                  <button
-                    key={conversation.id}
-                    className={`w-full rounded-[20px] border px-4 py-3 text-left transition ${
-                      isActive
-                        ? "border-[#d1b59c] bg-[#fff6ee] shadow-[0_12px_22px_rgba(114,79,42,0.08)]"
-                        : "border-[#eee3d6] bg-[#fcfaf7] hover:border-[#dcc8b5] hover:bg-white"
-                    }`}
-                    onClick={() => setSelectedConversationId(conversation.id)}
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[14px] font-semibold text-[#2f261f]">{conversation.title}</p>
-                      <span className="rounded-full border border-[#ead9cb] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b47542]">
-                        {conversation.tag}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-[12px] leading-5 text-[#7d7269]">{conversation.summary}</p>
-                    <p className="mt-2 text-[11px] text-[#a39486]">Updated {conversation.updatedAt}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-[#eadfce] bg-white p-4 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-                Models
-              </p>
-              <span className="rounded-full bg-[#f5ede5] px-2 py-1 text-[10px] font-semibold text-[#946b49]">
-                {filteredModels.length}
-              </span>
-            </div>
-            <div className="mt-3 flex items-center gap-3 rounded-[16px] border border-[#eadfce] bg-[#fbf8f4] px-3 py-2.5 text-[#9a8d80]">
-              <ComposerIcon kind="search" className="h-[15px] w-[15px]" />
-              <input
-                className="w-full bg-transparent text-[13px] text-[#302720] outline-none placeholder:text-[#b3a598]"
-                onChange={(event) => setModelQuery(event.target.value)}
-                placeholder="Search models"
-                value={modelQuery}
-              />
-            </div>
-            <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
-              {filteredModels.map((model) => {
-                const isActive = model.id === activeModelId;
-
-                return (
-                  <button
-                    key={model.id}
-                    className={`flex w-full items-center justify-between rounded-[16px] border px-3 py-3 text-left transition ${
-                      isActive
-                        ? "border-[#d3b69b] bg-[#fff5eb]"
-                        : "border-[#eee3d6] bg-[#fcfaf7] hover:border-[#dcc8b5] hover:bg-white"
-                    }`}
-                    onClick={() => {
-                      setActiveModelId(model.id);
-                      setComposerStatus(`${model.name} selected`);
-                    }}
-                    type="button"
-                  >
-                    <span>
-                      <span className="block text-[13px] font-semibold text-[#312821]">{model.name}</span>
-                      <span className="block text-[11px] text-[#8d8177]">{model.provider}</span>
-                    </span>
-                    {isActive ? (
-                      <span className="rounded-full bg-[#cf6f33] px-2 py-1 text-[10px] font-semibold text-white">
-                        Live
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+    <section className="h-[calc(100vh-53px)] overflow-hidden bg-[#f7f3ee]">
+      <div className="grid h-full min-h-0 xl:grid-cols-[240px_minmax(0,1fr)_270px]">
+        <aside className="overflow-y-auto border-r border-[#e6ddd3] bg-white px-4 py-4">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#a29184]">{t(language, "models")}</p>
+          <div className="mt-4 flex items-center gap-3 rounded-[16px] border border-[#decfbf] bg-[#fbf8f3] px-4 py-3 text-[#8f8377]"><Icon kind="search" /><input className="w-full bg-transparent text-[14px] text-[#332b24] outline-none placeholder:text-[#ac9f92]" onChange={(event) => setModelQuery(event.target.value)} placeholder={t(language, "search_models")} value={modelQuery} /></div>
+          <div className="mt-4 max-h-[calc(100vh-170px)] space-y-2 overflow-y-auto pr-1">{filteredModels.map((model) => { const active = model.id === activeModelId; return <button key={model.id} className={`flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition ${active ? "border border-[#ecd8c8] bg-[#fdf2ea]" : "border border-transparent hover:border-[#eadccc] hover:bg-[#fcfaf7]"}`} onClick={() => { setActiveModelId(model.id); setStatus(`${model.name} selected`); }} type="button"><div className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-[#eef2fb] text-[15px]">{model.provider.slice(0, 1)}</div><div className="min-w-0"><p className="truncate text-[15px] font-semibold text-[#231d18]">{model.name}</p><p className="mt-1 flex items-center gap-1 text-[12px] text-[#97897d]"><span className="h-1.5 w-1.5 rounded-full bg-[#47b067]" />{model.provider}</p></div></button>; })}</div>
         </aside>
 
-        <div className="space-y-4">
-          <div className="rounded-[34px] border border-[#eadfce] bg-white px-6 py-7 shadow-[0_24px_56px_rgba(83,59,31,0.08)]">
-            <div className="flex flex-col gap-4 border-b border-[#efe4d7] pb-5 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-[#a18f81]">
-                  Active workspace
-                </p>
-                <h2 className="mt-2 text-[34px] font-semibold leading-none text-[#15110e]">
-                  {selectedConversation?.title ?? "New conversation"}
-                </h2>
-                <p className="mt-3 max-w-[720px] text-[15px] leading-7 text-[#74695f]">
-                  {selectedConversation?.summary ?? "Start with a prompt, voice note, file, video, or screen share and keep every response connected to the same thread."}
-                </p>
+        <div className="flex min-h-0 flex-col bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.65),_transparent_42%),linear-gradient(180deg,_#f5f1ea_0%,_#f2ede6_100%)]">
+          <div className="flex min-h-0 flex-1 px-5 pb-5 pt-6 lg:px-6">
+            <div className="flex h-full min-h-0 w-full flex-col rounded-[28px] border border-[#e9e0d6] bg-[rgba(255,255,255,0.48)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
+                {messages.length === 0 ? <div className="mx-auto mt-4 max-w-[600px] rounded-[30px] border border-[#eadfd2] bg-white px-8 py-9 text-center shadow-[0_20px_45px_rgba(86,62,35,0.08)]"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#f0d4c2] bg-[#fff8f2] text-[#6c655f]"><Icon kind="sparkle" /></div><h2 className="mt-7 text-[28px] font-semibold tracking-[-0.03em] text-[#1b1511]">Welcome! I'm here to help you</h2><p className="mx-auto mt-4 max-w-[470px] text-[15px] leading-7 text-[#766b61]">No tech background needed. Tell me what you'd like to achieve and I'll help you discover what's possible, step by step.</p><div className="mt-7 rounded-[24px] border border-[#e7dbcf] bg-[#f8f4ee] p-4 text-left"><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#db7c37]">{t(language, "chat_today")}</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{promptOptions.map((option, index) => <button key={option.id} className="rounded-[18px] border border-[#e5d8ca] bg-white px-4 py-5 text-center transition hover:-translate-y-0.5 hover:border-[#d8c3af]" onClick={() => { setDraft(option.title); setStatus("Prompt selected"); }} type="button"><div className={`text-[28px] ${promptAccents[index % promptAccents.length]}`}>{option.icon}</div><p className="mt-3 text-[16px] font-semibold text-[#211a15]">{option.title}</p><p className="mt-1 text-[12px] text-[#918477]">{option.subtitle}</p></button>)}</div></div><p className="mt-6 text-[14px] text-[#9a8d80]">{t(language, "chat_or_type")}</p></div> : <div className="mx-auto max-w-[760px] space-y-4">{messages.map((message) => <article key={message.id} className={`rounded-[24px] border px-5 py-4 ${message.role === "user" ? "ml-auto max-w-[85%] border-[#ead7c8] bg-[#fff6ee]" : "max-w-[90%] border-[#ece2d8] bg-white"}`}><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a18f81]">{message.role === "user" ? "You" : "Assistant"}</p><span className="text-[11px] text-[#ad9d8f]">{activeModel?.name ?? "Workspace"}</span></div><p className="mt-3 text-[15px] leading-7 text-[#2c241e]">{message.text}</p>{message.attachments?.length ? <div className="mt-4 flex flex-wrap gap-3">{message.attachments.map((attachment) => <div key={attachment.id} className={`rounded-[18px] border px-4 py-3 text-[12px] ${colors[attachment.kind]}`}><p className="font-semibold capitalize">{attachment.kind}: {attachment.name}</p>{attachment.sizeLabel ? <p className="mt-1 text-[11px] opacity-80">{attachment.sizeLabel}</p> : null}{attachment.kind === "audio" && attachment.previewUrl ? <audio className="mt-2 w-full" controls src={attachment.previewUrl} /> : null}{attachment.kind === "camera" && attachment.previewUrl ? <img alt={attachment.name} className="mt-2 max-h-[160px] w-full rounded-[12px] border border-current/10 object-cover" src={attachment.previewUrl} /> : null}{attachment.kind === "video" && attachment.previewUrl ? <video className="mt-2 max-h-[180px] w-full rounded-[12px] border border-current/10" controls src={attachment.previewUrl} /> : null}{attachment.kind === "screen" && attachment.stream ? <ScreenSharePreview stream={attachment.stream} /> : null}</div>)}</div> : null}</article>)}</div>}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-full border border-[#eadccc] bg-[#fbf5ee] px-4 py-2 text-[12px] text-[#7d6f62]">
-                  {activeModel ? `${activeModel.name} by ${activeModel.provider}` : "No model selected"}
-                </div>
-                <button
-                  className="rounded-full border border-[#eadccc] bg-white px-4 py-2 text-[12px] font-semibold text-[#4f433a] transition hover:border-[#d4bca4]"
-                  onClick={() => onNavigate("agents")}
-                  type="button"
-                >
-                  Open agent builder
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
-              <div className="rounded-[28px] border border-[#eadfce] bg-[#fbf8f4] p-4">
-                <div className="flex items-center gap-3 rounded-[22px] border border-[#e6d9c8] bg-white px-4 py-4 shadow-[0_12px_26px_rgba(83,59,31,0.05)]">
-                  <textarea
-                    className="min-h-[70px] w-full resize-none bg-transparent text-[16px] leading-7 text-[#241c17] outline-none placeholder:text-[#a99a8d]"
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder="Describe your project, ask a question, or say hi. Voice, files, video, and screen share all work from here."
-                    rows={3}
-                    value={draft}
-                  />
-                  <button
-                    className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#ca6a2f] text-white transition hover:bg-[#b45d27] md:inline-flex"
-                    onClick={handleSend}
-                    type="button"
-                  >
-                    <ComposerIcon kind="send" className="h-[20px] w-[20px]" />
-                  </button>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <button
-                    className={`inline-flex h-12 w-12 items-center justify-center rounded-[16px] border transition ${
-                      isRecordingVoice
-                        ? "border-[#d9b6c0] bg-[#fff1f4] text-[#bb4a63]"
-                        : "border-[#d9cdfa] bg-[#f4efff] text-[#7c55e5]"
-                    }`}
-                    onClick={() => {
-                      void toggleVoiceRecording();
-                    }}
-                    title="Voice recording"
-                    type="button"
-                  >
-                    <ComposerIcon kind="voice" />
-                  </button>
-
-                  <button
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#ffd89d] bg-[#fff6e8] text-[#df8b1d] transition hover:bg-white"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Attach file"
-                    type="button"
-                  >
-                    <ComposerIcon kind="file" />
-                  </button>
-
-                  <button
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#cfe0ff] bg-[#eff6ff] text-[#3b72ce] transition hover:bg-white"
-                    onClick={() => audioInputRef.current?.click()}
-                    title="Attach audio"
-                    type="button"
-                  >
-                    <ComposerIcon kind="audio" />
-                  </button>
-
-                  <button
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#f5c9d1] bg-[#fff2f4] text-[#cf5972] transition hover:bg-white"
-                    onClick={() => videoInputRef.current?.click()}
-                    title="Attach video"
-                    type="button"
-                  >
-                    <ComposerIcon kind="video" />
-                  </button>
-
-                  <button
-                    className={`inline-flex h-12 w-12 items-center justify-center rounded-[16px] border transition ${
-                      isSharingScreen
-                        ? "border-[#b9dfc8] bg-[#ecf9f0] text-[#2f8d61]"
-                        : "border-[#cde9da] bg-[#edf9f3] text-[#2d8f62]"
-                    }`}
-                    onClick={() => {
-                      void toggleScreenShare();
-                    }}
-                    title="Share screen"
-                    type="button"
-                  >
-                    <ComposerIcon kind="screen" />
-                  </button>
-
-                  <div className="ml-auto hidden rounded-full border border-[#eadccc] bg-white px-4 py-2 text-[12px] text-[#87796b] md:block">
-                    {composerStatus}
-                  </div>
-                </div>
-
-                <input
-                  accept="*"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => addAttachments(event.target.files, "file")}
-                  ref={fileInputRef}
-                  type="file"
-                />
-                <input
-                  accept="audio/*"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => addAttachments(event.target.files, "audio")}
-                  ref={audioInputRef}
-                  type="file"
-                />
-                <input
-                  accept="video/*"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => addAttachments(event.target.files, "video")}
-                  ref={videoInputRef}
-                  type="file"
-                />
-
-                {pendingAttachments.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {pendingAttachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className={`flex items-center gap-3 rounded-full border px-4 py-2 text-[12px] shadow-[0_10px_20px_rgba(83,59,31,0.05)] ${actionColorMap[attachment.kind]}`}
-                      >
-                        <span className="font-semibold capitalize">{attachment.kind}</span>
-                        <span className="max-w-[220px] truncate">{attachment.name}</span>
-                        {attachment.sizeLabel ? <span>{attachment.sizeLabel}</span> : null}
-                        <button
-                          className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]"
-                          onClick={() => handleRemoveAttachment(attachment.id)}
-                          type="button"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {isSharingScreen ? (
-                  <div className="mt-4 rounded-[24px] border border-[#d8eadf] bg-[#f3fbf6] p-4">
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#2a8a5d]">
-                      Screen preview ready
-                    </p>
-                    <p className="mt-2 text-[13px] leading-6 text-[#5d7167]">
-                      Your shared screen is attached to the next message. Press the green screen button again to stop sharing.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-[28px] border border-[#eadfce] bg-[#fbf8f4] p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-                  Suggested paths
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {suggestionChips.map((chip) => (
-                    <button
-                      key={chip.id}
-                      className="rounded-full border border-[#eadccc] bg-white px-4 py-2 text-[12px] font-semibold text-[#4e433a] transition hover:border-[#d4bca4]"
-                      onClick={() => {
-                        setDraft(chip.label);
-                        setComposerStatus("Suggestion added to composer");
-                      }}
-                      type="button"
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-5 space-y-2">
-                  {footerPrompts.slice(0, 4).map((prompt) => (
-                    <button
-                      key={prompt}
-                      className="w-full rounded-[18px] border border-[#eadccc] bg-white px-4 py-3 text-left text-[13px] text-[#4f463f] transition hover:border-[#d4bca4]"
-                      onClick={() => {
-                        setDraft(prompt);
-                        setComposerStatus("Prompt added to composer");
-                      }}
-                      type="button"
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="rounded-[32px] border border-[#eadfce] bg-white p-5 shadow-[0_24px_56px_rgba(83,59,31,0.08)]">
-              {visibleMessages.length === 0 ? (
-                <ChatWelcomePanel
-                  onPromptSelect={(value) => {
-                    setDraft(value);
-                    setComposerStatus("Prompt selected");
-                  }}
-                  promptOptions={promptOptions}
-                />
-              ) : (
-                <div className="space-y-4">
-                  {visibleMessages.map((message) => (
-                    <article
-                      key={message.id}
-                      className={`rounded-[26px] border px-5 py-4 ${
-                        message.role === "user"
-                          ? "ml-auto max-w-[88%] border-[#e6d4c0] bg-[#fff6ee]"
-                          : "max-w-[92%] border-[#ece2d8] bg-[#fcfaf7]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a18f81]">
-                          {message.role === "user" ? "You" : "Assistant"}
-                        </p>
-                        <span className="text-[11px] text-[#ad9d8f]">
-                          {selectedConversation?.tag ?? "Session"}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-[15px] leading-7 text-[#2c241e]">{message.text}</p>
-
-                      {message.attachments?.length ? (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {message.attachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              className={`rounded-full border px-4 py-2 text-[12px] ${actionColorMap[attachment.kind]}`}
-                            >
-                              {attachment.kind}: {attachment.name}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-[28px] border border-[#eadfce] bg-white p-4 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-                  Live room
-                </p>
-                <div className="mt-3 rounded-[22px] border border-[#eadccc] bg-[#fbf8f4] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[16px] font-semibold text-[#241b16]">{selectedConversation?.tag ?? "Workspace"}</p>
-                      <p className="mt-1 text-[12px] text-[#7d7269]">Voice, media, and files stay attached to this thread.</p>
-                    </div>
-                    <span className="rounded-full bg-[#edf8f1] px-3 py-1 text-[11px] font-semibold text-[#2e8d61]">
-                      Synced
-                    </span>
-                  </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-[18px] border border-[#ebdfd2] bg-white px-3 py-3">
-                      <p className="text-[18px] font-semibold text-[#221b16]">{visibleMessages.length}</p>
-                      <p className="mt-1 text-[11px] text-[#8f8276]">Messages</p>
-                    </div>
-                    <div className="rounded-[18px] border border-[#ebdfd2] bg-white px-3 py-3">
-                      <p className="text-[18px] font-semibold text-[#221b16]">{sharedAttachments.length}</p>
-                      <p className="mt-1 text-[11px] text-[#8f8276]">Assets</p>
-                    </div>
-                    <div className="rounded-[18px] border border-[#ebdfd2] bg-white px-3 py-3">
-                      <p className="text-[18px] font-semibold text-[#221b16]">{isSharingScreen ? "On" : "Off"}</p>
-                      <p className="mt-1 text-[11px] text-[#8f8276]">Screen</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-[#eadfce] bg-white p-4 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-                    Pinned context
-                  </p>
-                  <span className="rounded-full bg-[#f5ede5] px-2 py-1 text-[10px] font-semibold text-[#946b49]">
-                    {pinnedMessages.length}
-                  </span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {pinnedMessages.length > 0 ? (
-                    pinnedMessages.map((message) => (
-                      <div key={message.id} className="rounded-[18px] border border-[#eadccc] bg-[#fcfaf7] px-4 py-3">
-                        <p className="text-[12px] font-semibold text-[#342b24]">Assistant note</p>
-                        <p className="mt-2 text-[12px] leading-6 text-[#7b7066]">{message.text}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[18px] border border-dashed border-[#e2d4c3] bg-[#fbf8f4] px-4 py-4 text-[12px] leading-6 text-[#8a7d71]">
-                      Send a message to start building pinned guidance for this workspace.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-[#eadfce] bg-white p-4 shadow-[0_20px_45px_rgba(83,59,31,0.08)]">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8d80]">
-                    Shared assets
-                  </p>
-                  <span className="rounded-full bg-[#f5ede5] px-2 py-1 text-[10px] font-semibold text-[#946b49]">
-                    {sharedAttachments.length}
-                  </span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {sharedAttachments.length > 0 ? (
-                    sharedAttachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className={`rounded-[18px] border px-4 py-3 text-[12px] ${actionColorMap[attachment.kind]}`}
-                      >
-                        <p className="font-semibold capitalize">{attachment.kind}</p>
-                        <p className="mt-1 truncate">{attachment.name}</p>
-                        {attachment.sizeLabel ? <p className="mt-1 text-[11px] opacity-80">{attachment.sizeLabel}</p> : null}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[18px] border border-dashed border-[#e2d4c3] bg-[#fbf8f4] px-4 py-4 text-[12px] leading-6 text-[#8a7d71]">
-                      Attached files, voice notes, videos, and screen shares will appear here.
-                    </div>
-                  )}
-                </div>
+              <div className="border-t border-[#e7ddd3] bg-white/75 px-4 py-4 lg:px-6">
+                <div className="rounded-[24px] border border-[#decfbf] bg-[#fbf8f3] shadow-[0_12px_26px_rgba(83,59,31,0.05)]"><textarea className="min-h-[54px] w-full resize-none rounded-t-[24px] bg-transparent px-5 py-4 text-[16px] leading-7 text-[#241c17] outline-none placeholder:text-[#9d9185]" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void handleSend(); } }} placeholder="Describe your project, ask a question, or just say hi. I'm here to help..." rows={2} value={draft} /><div className="flex flex-wrap items-center gap-2 border-t border-[#e8ded4] px-4 py-3"><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.voice} ${isListening ? "ring-2 ring-[#d8c9ff]" : ""}`} onClick={() => void handleVoice()} type="button"><Icon kind="voice" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.file}`} onClick={() => fileRef.current?.click()} type="button"><Icon kind="file" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.camera} ${isCameraOn ? "ring-2 ring-[#cadcff]" : ""}`} onClick={() => void handleCamera()} type="button"><Icon kind="camera" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.video} ${isRecordingVideo ? "ring-2 ring-[#f3c6cf]" : ""}`} onClick={() => void handleVideo()} type="button"><Icon kind="video" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.screen} ${isSharingScreen ? "ring-2 ring-[#bfe4ce]" : ""}`} onClick={() => void handleScreen()} type="button"><Icon kind="screen" /></button><div className="ml-auto flex items-center gap-3"><span className="hidden text-[13px] text-[#ae9b89] lg:inline">{activeModel ? `${activeModel.name} by ${activeModel.provider}` : t(language, "no_model_selected")}</span><button className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#c96b2e] text-white transition hover:bg-[#b75d22]" onClick={() => void handleSend()} type="button"><Icon kind="send" className="h-5 w-5" /></button></div></div></div>
+                <input className="hidden" multiple onChange={(event) => addFiles(event.target.files, "file")} ref={fileRef} type="file" />
+                <input accept="image/*" capture="environment" className="hidden" onChange={(event) => addFiles(event.target.files, "camera")} ref={imageRef} type="file" />
+                <input accept="audio/*" className="hidden" multiple onChange={(event) => addFiles(event.target.files, "audio")} ref={audioRef} type="file" />
+                <input accept="video/*" className="hidden" multiple onChange={(event) => addFiles(event.target.files, "video")} ref={videoRef} type="file" />
+                {isCameraOn ? <div className="mt-3 rounded-[22px] border border-[#dbe5f3] bg-[#f5f9ff] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#406cb7]">Camera Preview</p><div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={capturePhoto} type="button">Capture photo</button><button className={`rounded-full px-3 py-2 text-[11px] font-semibold text-white ${isRecordingVideo ? "bg-[#cf5972]" : "bg-[#ca6a2f]"}`} onClick={() => void handleVideo()} type="button">{isRecordingVideo ? "Stop video" : "Record video"}</button><button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={stopCamera} type="button">Close camera</button></div></div><video autoPlay className="mt-3 max-h-[240px] w-full rounded-[16px] border border-[#d7e3f1] bg-[#1e1a18] object-cover" muted playsInline ref={cameraVideoRef} /></div> : null}
+                <div className="mt-4 flex flex-wrap items-center gap-2">{suggestionChips.map((chip, index) => <button key={chip.id} className={`rounded-full border px-4 py-2 text-[13px] transition ${index === 0 ? "border-[#1f1a16] bg-[#1f1a16] text-white" : "border-[#ddd1c4] bg-white text-[#54493f] hover:border-[#ccb9a6]"}`} onClick={() => { setDraft(chip.label); setStatus("Suggestion added to composer"); }} type="button">{chip.label}</button>)}</div>
+                <div className="mt-4 grid gap-2 text-[14px] text-[#7b6e62] lg:grid-cols-2">{footerPrompts.map((prompt) => <button key={prompt} className="text-left transition hover:text-[#c96b2e]" onClick={() => { setDraft(prompt); setStatus("Prompt added to composer"); }} type="button">• {prompt}</button>)}</div>
+                <p className="mt-4 text-[12px] text-[#a18f81]">{status}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <aside className="space-y-4">
-          <ActionGroup title="Quick actions" actions={quickActions} onActionClick={routeAction} />
-          <ActionGroup title="Create with AI" actions={createActions} onActionClick={routeAction} />
-          <ActionGroup title="Analysis tools" actions={analysisActions} onActionClick={routeAction} />
+        <aside className="overflow-y-auto border-l border-[#e6ddd3] bg-white px-4 py-4">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#a29184]">{t(language, "quick_actions")}</p>
+          <div className="mt-4 space-y-5">{[{ title: "Navigation & Tools", actions: sections.quick }, { title: "Create & Generate", actions: sections.create }, { title: "Analyze & Write", actions: sections.analysis }].map((section) => <div key={section.title}><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#af9f91]">{section.title}</p><div className="mt-3 space-y-2">{section.actions.map((action) => <button key={action.id} className="flex w-full items-center gap-3 rounded-[14px] border border-[#e5d9cc] bg-white px-4 py-3 text-left text-[14px] text-[#3b3128] transition hover:border-[#d6bda8] hover:bg-[#fcfaf7]" onClick={() => routeAction(action.id)} type="button"><span className="text-[18px]">{action.icon}</span><span>{action.label}</span></button>)}</div></div>)}<div className="rounded-[18px] border border-[#e5d9cc] bg-[#fcfaf7] px-4 py-4"><p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#af9f91]">{t(language, "live_summary")}</p><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{messages.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "messages")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{shared.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "assets")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{isSharingScreen ? t(language, "on") : t(language, "off")}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "screen")}</p></div></div></div></div>
         </aside>
       </div>
     </section>
   );
 };
+
+
+
+
+
+
+

@@ -27,6 +27,12 @@ export class ModelsController {
     return this.modelsService.providers();
   }
 
+  @Get("filters")
+  @ApiOperation({ summary: "Get marketplace filter metadata" })
+  filters() {
+    return this.modelsService.filters();
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get full model details" })
   findOne(@Param("id") id: string) {

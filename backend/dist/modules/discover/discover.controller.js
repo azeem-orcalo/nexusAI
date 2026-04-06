@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiscoverController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
+const list_research_feed_query_dto_1 = require("./dto/list-research-feed-query.dto");
 const recommendation_request_dto_1 = require("./dto/recommendation-request.dto");
 const discover_service_1 = require("./discover.service");
 let DiscoverController = class DiscoverController {
@@ -30,8 +31,17 @@ let DiscoverController = class DiscoverController {
     quickActions() {
         return this.discoverService.quickActions();
     }
-    researchFeed() {
-        return this.discoverService.researchFeed();
+    homeWorkflows() {
+        return this.discoverService.homeWorkflows();
+    }
+    homeUseCases() {
+        return this.discoverService.homeUseCases();
+    }
+    researchFeed(query) {
+        return this.discoverService.researchFeed(query);
+    }
+    researchFeedFilters() {
+        return this.discoverService.researchFeedFilters();
     }
 };
 exports.DiscoverController = DiscoverController;
@@ -58,12 +68,34 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], DiscoverController.prototype, "quickActions", null);
 __decorate([
-    (0, common_1.Get)("research-feed"),
-    (0, swagger_1.ApiOperation)({ summary: "Get research and release feed items" }),
+    (0, common_1.Get)("home-workflows"),
+    (0, swagger_1.ApiOperation)({ summary: "Get home page workflow categories and suggestions" }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
+], DiscoverController.prototype, "homeWorkflows", null);
+__decorate([
+    (0, common_1.Get)("home-use-cases"),
+    (0, swagger_1.ApiOperation)({ summary: "Get home page quick-start use cases" }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], DiscoverController.prototype, "homeUseCases", null);
+__decorate([
+    (0, common_1.Get)("research-feed"),
+    (0, swagger_1.ApiOperation)({ summary: "Get research and release feed items" }),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_research_feed_query_dto_1.ListResearchFeedQueryDto]),
+    __metadata("design:returntype", void 0)
 ], DiscoverController.prototype, "researchFeed", null);
+__decorate([
+    (0, common_1.Get)("research-feed/filters"),
+    (0, swagger_1.ApiOperation)({ summary: "Get discover research feed filters" }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], DiscoverController.prototype, "researchFeedFilters", null);
 exports.DiscoverController = DiscoverController = __decorate([
     (0, swagger_1.ApiTags)("discover"),
     (0, common_1.Controller)("discover"),

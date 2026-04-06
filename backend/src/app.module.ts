@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AccountModule } from "./modules/account/account.module";
 import { AgentsModule } from "./modules/agents/agents.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { ChatModule } from "./modules/chat/chat.module";
 import { databaseImports } from "./database.config";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { DiscoverModule } from "./modules/discover/discover.module";
@@ -11,6 +12,7 @@ import { ModelsModule } from "./modules/models/models.module";
   imports: [
     ...databaseImports,
     AuthModule,
+    ChatModule,
     ModelsModule,
     AgentsModule,
     DashboardModule,

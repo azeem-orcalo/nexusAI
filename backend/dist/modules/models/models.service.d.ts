@@ -1,7 +1,18 @@
+import { Model as MongooseModel } from "mongoose";
 import { CompareModelsDto } from "./dto/compare-models.dto";
 import { ListModelsQueryDto } from "./dto/list-models-query.dto";
+import { ModelDocument } from "./schemas/model.schema";
+import { Review, ReviewDocument } from "./schemas/review.schema";
 export declare class ModelsService {
-    findAll(query: ListModelsQueryDto): {
+    private readonly modelStore;
+    private readonly reviewStore;
+    constructor(modelStore: MongooseModel<ModelDocument>, reviewStore: MongooseModel<ReviewDocument>);
+    private getModelSource;
+    private ensureSeedData;
+    private getReviewSource;
+    private inferPriceModel;
+    private matchesQuery;
+    findAll(query: ListModelsQueryDto): Promise<{
         id: string;
         name: string;
         provider: string;
@@ -13,8 +24,11 @@ export declare class ModelsService {
         averageRating: number;
         contextWindow: number;
         latencyMs: number;
-    }[];
-    featured(): {
+        badge: string | undefined;
+        priceModel: string;
+        isOpenSource: boolean;
+    }[]>;
+    featured(): Promise<{
         id: string;
         name: string;
         provider: string;
@@ -26,9 +40,20 @@ export declare class ModelsService {
         averageRating: number;
         contextWindow: number;
         latencyMs: number;
-    }[];
-    providers(): string[];
-    findOne(id: string): {
+        badge: string | undefined;
+        priceModel: string;
+        isOpenSource: boolean;
+    }[]>;
+    providers(): Promise<string[]>;
+    filters(): Promise<{
+        providers: string[];
+        categories: string[];
+        tags: string[];
+        useCases: string[];
+        priceModels: string[];
+        maxPrice: number;
+    }>;
+    findOne(id: string): Promise<{
         pricing: {
             input: string;
             output: string;
@@ -50,16 +75,18 @@ export declare class ModelsService {
         averageRating?: number | undefined;
         contextWindow?: number | undefined;
         latencyMs?: number | undefined;
-    };
-    reviews(id: string): {
-        id: string;
-        modelId: string;
-        authorName: string;
-        rating: number;
-        comment: string;
-        verified: boolean;
-    }[];
-    compare(payload: CompareModelsDto): {
+        badge?: string | undefined;
+        priceModel?: string | undefined;
+        isOpenSource?: boolean | undefined;
+    }>;
+    reviews(id: string): Promise<(import("mongoose").FlattenMaps<import("mongoose").Document<unknown, {}, Review, {}, {}> & Review & {
+        _id: import("mongoose").Types.ObjectId;
+    } & {
+        __v: number;
+    }> & Required<{
+        _id: import("mongoose").Types.ObjectId;
+    }>)[]>;
+    compare(payload: CompareModelsDto): Promise<{
         pricing: {
             input: string;
             output: string;
@@ -81,5 +108,8 @@ export declare class ModelsService {
         averageRating?: number | undefined;
         contextWindow?: number | undefined;
         latencyMs?: number | undefined;
-    }[];
+        badge?: string | undefined;
+        priceModel?: string | undefined;
+        isOpenSource?: boolean | undefined;
+    }[]>;
 }

@@ -12,12 +12,20 @@ const mongoose_1 = require("@nestjs/mongoose");
 const agent_schema_1 = require("./schemas/agent.schema");
 const agents_controller_1 = require("./agents.controller");
 const agents_service_1 = require("./agents.service");
+const agent_message_schema_1 = require("./schemas/agent-message.schema");
+const agent_task_schema_1 = require("./schemas/agent-task.schema");
 let AgentsModule = class AgentsModule {
 };
 exports.AgentsModule = AgentsModule;
 exports.AgentsModule = AgentsModule = __decorate([
     (0, common_1.Module)({
-        imports: [mongoose_1.MongooseModule.forFeature([{ name: agent_schema_1.Agent.name, schema: agent_schema_1.AgentSchema }])],
+        imports: [
+            mongoose_1.MongooseModule.forFeature([
+                { name: agent_schema_1.Agent.name, schema: agent_schema_1.AgentSchema },
+                { name: agent_message_schema_1.AgentMessage.name, schema: agent_message_schema_1.AgentMessageSchema },
+                { name: agent_task_schema_1.AgentTask.name, schema: agent_task_schema_1.AgentTaskSchema }
+            ])
+        ],
         controllers: [agents_controller_1.AgentsController],
         providers: [agents_service_1.AgentsService]
     })
