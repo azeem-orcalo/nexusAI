@@ -245,7 +245,7 @@ export declare class AgentsService {
         name: string;
         completed: boolean;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             createdAt: Date;
         }[];
@@ -256,7 +256,7 @@ export declare class AgentsService {
         name: string;
         completed: boolean;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             createdAt: Date;
         }[];
@@ -267,7 +267,7 @@ export declare class AgentsService {
         name: string;
         completed: boolean;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             createdAt: Date;
         }[];
@@ -282,7 +282,7 @@ export declare class AgentsService {
         name: string;
         completed: boolean;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             createdAt: Date;
         }[];
@@ -293,7 +293,7 @@ export declare class AgentsService {
         name: string;
         completed: boolean;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             createdAt: Date;
         }[];
@@ -301,14 +301,14 @@ export declare class AgentsService {
     messages(agentId: string): Promise<{
         id: string;
         agentId: string;
-        role: "user" | "assistant";
+        role: "assistant" | "user";
         text: string;
         createdAt: Date | undefined;
     }[]>;
     addMessage(agentId: string, payload: CreateAgentMessageDto): Promise<{
         id: string;
         agentId: string;
-        role: "user" | "assistant";
+        role: "assistant" | "user";
         text: string;
         createdAt: Date | undefined;
     }>;

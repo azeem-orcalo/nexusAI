@@ -2,7 +2,7 @@
 import type { HeroContent } from "../../data/mock/home";
 import { getAltCamStream } from "../../lib/altcam";
 import { t } from "../../lib/i18n";
-import type { HomeWorkflowCategory } from "../../types/api";
+import type { HomeWorkflowCategory, MediaAttachment } from "../../types/api";
 
 export type HeroSearchResult = {
   id: string;
@@ -11,13 +11,8 @@ export type HeroSearchResult = {
   page: "chat-hub" | "marketplace" | "agents";
 };
 
-type HeroAttachment = {
-  id: string;
-  kind: "audio" | "camera" | "file" | "screen" | "video";
-  name: string;
-  previewUrl?: string;
-  sizeLabel?: string;
-};
+/** Re-use the shared type so ChatHub can consume these without conversion. */
+type HeroAttachment = MediaAttachment;
 
 type OnboardingStage = "welcome" | "questions" | "building";
 
@@ -65,7 +60,7 @@ type HeroSectionProps = {
   workflowCategories: HomeWorkflowCategory[];
   onNavigate: (page: "chat-hub" | "marketplace" | "agents") => void;
   onSearchNavigate: (result: HeroSearchResult) => void;
-  onSubmitPrompt: (prompt: string) => void;
+  onSubmitPrompt: (prompt: string, attachments: MediaAttachment[]) => void;
 };
 
 const actionPills = [
@@ -178,6 +173,8 @@ export const HeroSection = ({
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenChunksRef = useRef<Blob[]>([]);
   const onboardingTimerRef = useRef<number | null>(null);
 
   const filteredResults = useMemo(() => {
@@ -388,6 +385,11 @@ export const HeroSection = ({
       mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       cameraRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+        screenRecorderRef.current.ondataavailable = null;
+        screenRecorderRef.current.onstop = null;
+        screenRecorderRef.current.stop();
+      }
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -412,8 +414,8 @@ export const HeroSection = ({
       id: `${kind}-${file.name}-${file.lastModified}-${index}`,
       kind,
       name: file.name,
-      previewUrl:
-        kind === "video" || kind === "camera" ? URL.createObjectURL(file) : undefined,
+      // Always create a blob URL so ChatHub can render/download every kind.
+      previewUrl: URL.createObjectURL(file),
       sizeLabel: formatFileSize(file.size)
     }));
 
@@ -449,8 +451,10 @@ export const HeroSection = ({
       window.clearTimeout(onboardingTimerRef.current);
     }
 
+    const pendingAttachments = attachments.slice();
+    setAttachments([]);
     onboardingTimerRef.current = window.setTimeout(() => {
-      onSubmitPrompt(generatedPrompt);
+      onSubmitPrompt(generatedPrompt, pendingAttachments);
     }, 1400);
   };
 
@@ -500,7 +504,8 @@ export const HeroSection = ({
     }
 
     if (trimmedQuery) {
-      onSubmitPrompt(trimmedQuery);
+      onSubmitPrompt(trimmedQuery, attachments);
+      setAttachments([]);
       return;
     }
 
@@ -774,12 +779,17 @@ export const HeroSection = ({
 
   const toggleScreenShare = async (): Promise<void> => {
     if (isScreenSharing) {
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
-      screenStreamRef.current = null;
-      setIsScreenSharing(false);
-      setAttachments((current) => current.filter((attachment) => attachment.kind !== "screen"));
-      setStatus("Screen share stopped");
-      setScreenShareTick((value) => value + 1);
+      // Stop recorder — onstop handler finalizes the recording blob
+      if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+        screenRecorderRef.current.stop();
+      } else {
+        screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+        screenStreamRef.current = null;
+        setIsScreenSharing(false);
+        setAttachments((current) => current.filter((attachment) => attachment.kind !== "screen"));
+        setStatus("Screen share stopped");
+        setScreenShareTick((value) => value + 1);
+      }
       return;
     }
 
@@ -798,27 +808,51 @@ export const HeroSection = ({
         video: true
       });
       const [videoTrack] = stream.getVideoTracks();
+      const attachmentId = `screen-${Date.now()}`;
 
       screenStreamRef.current = stream;
       setIsScreenSharing(true);
       setAttachments((current) => [
         ...current.filter((attachment) => attachment.kind !== "screen"),
         {
-          id: `screen-${Date.now()}`,
+          id: attachmentId,
           kind: "screen",
-          name: videoTrack?.label || "Live screen share"
+          name: videoTrack?.label || "Live screen share",
+          sizeLabel: "Live"
         }
       ]);
-      setStatus("Screen share is live");
+      setStatus("Screen recording started — stop sharing to save the recording");
       setScreenShareTick((value) => value + 1);
 
+      // Start recording the screen stream
+      const recorder = new MediaRecorder(stream);
+      screenChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) screenChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(screenChunksRef.current, { type: recorder.mimeType || "video/webm" });
+        const previewUrl = URL.createObjectURL(blob);
+        screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+        screenStreamRef.current = null;
+        setIsScreenSharing(false);
+        setAttachments((current) =>
+          current.map((attachment) =>
+            attachment.id === attachmentId
+              ? { id: attachment.id, kind: "screen" as const, name: attachment.name, previewUrl, sizeLabel: formatFileSize(blob.size) }
+              : attachment
+          )
+        );
+        setStatus("Screen recording saved — add a message and send");
+        setScreenShareTick((value) => value + 1);
+      };
+      screenRecorderRef.current = recorder;
+      recorder.start();
+
+      // When the user ends sharing from the browser's built-in UI
       if (videoTrack) {
         videoTrack.onended = () => {
-          screenStreamRef.current = null;
-          setIsScreenSharing(false);
-          setAttachments((current) => current.filter((attachment) => attachment.kind !== "screen"));
-          setStatus("Screen share ended");
-          setScreenShareTick((value) => value + 1);
+          if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+            screenRecorderRef.current.stop();
+          }
         };
       }
     } catch {
@@ -1023,7 +1057,7 @@ export const HeroSection = ({
                         </p>
                         <button
                           className="mt-5 rounded-full bg-[#d9772c] px-5 py-3 text-[13px] font-semibold text-white"
-                          onClick={() => onSubmitPrompt(query.trim())}
+                          onClick={() => { onSubmitPrompt(query.trim(), attachments); setAttachments([]); }}
                           type="button"
                         >
                           {t(language, "hero_search_send_anyway")}
@@ -1273,6 +1307,13 @@ export const HeroSection = ({
                             src={attachment.previewUrl}
                           />
                         ) : null}
+                        {attachment.kind === "screen" && attachment.previewUrl ? (
+                          <video
+                            className="mt-2 max-h-[160px] w-full rounded-[12px] border border-[#e4d7ca]"
+                            controls
+                            src={attachment.previewUrl}
+                          />
+                        ) : null}
                       </article>
                     ))}
                   </div>
@@ -1351,7 +1392,7 @@ export const HeroSection = ({
                 key={action.id}
                 className="rounded-[22px] border border-[#ddd4c9] bg-white px-4 py-5 text-center shadow-[0_8px_18px_rgba(71,49,28,0.05)] transition hover:-translate-y-0.5 hover:border-[#d7c4b2]"
                 onClick={() => {
-                  onSubmitPrompt(action.label);
+                  onSubmitPrompt(action.label, []);
                 }}
                 type="button"
               >

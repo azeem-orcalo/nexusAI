@@ -303,8 +303,17 @@ const translations: Record<string, Record<string, string>> = {
   }
 };
 
+/** Returns the translated string for `key` in `language`, falling back to English. */
 export const t = (language: string, key: string): string =>
   translations[language]?.[key] ?? translations.en[key] ?? key;
 
+/** Languages that require right-to-left layout. */
 export const isRtlLanguage = (language: string): boolean =>
   language === "ar" || language === "ur";
+
+/**
+ * Returns true if the given language code has a full translation set.
+ * Use this to warn users when a language is not yet fully translated.
+ */
+export const isFullyTranslated = (language: string): boolean =>
+  language in translations;

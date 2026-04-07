@@ -10,13 +10,14 @@ import type {
   ApiAgentTask,
   ApiAgentTemplate,
   CreateAgentRequest,
-  DeployAgentResponse
+  DeployAgentResponse,
+  MediaAttachment
 } from "../../types/api";
 
 type AgentsWorkspaceProps = {
   agents: ApiAgent[];
   templates: ApiAgentTemplate[];
-  onOpenChatHub: (prompt: string) => void;
+  onOpenChatHub: (prompt: string, attachments?: MediaAttachment[]) => void;
   onCreateAgent: (payload: CreateAgentRequest) => Promise<ApiAgent>;
   onDeployAgent: (id: string) => Promise<DeployAgentResponse>;
   onUpdateAgent: (
@@ -156,6 +157,18 @@ const describeAttachments = (attachments: ComposerAttachment[]): string =>
     })
     .join("\n");
 
+/**
+ * Convert a local ComposerAttachment to the cross-surface MediaAttachment type.
+ * The live MediaStream is intentionally dropped — streams don't survive navigation.
+ */
+const toMediaAttachment = (a: ComposerAttachment): MediaAttachment => ({
+  id: a.id,
+  kind: a.kind,
+  name: a.name,
+  previewUrl: a.previewUrl,
+  sizeLabel: a.sizeLabel
+});
+
 const stopAttachmentStream = (attachment: ComposerAttachment): void => {
   attachment.stream?.getTracks().forEach((track) => track.stop());
 
@@ -225,6 +238,13 @@ const AttachmentPreview = ({
         src={attachment.previewUrl}
       />
     ) : null}
+    {attachment.previewUrl && attachment.kind === "screen" ? (
+      <video
+        className="mt-2 h-24 w-full rounded-[14px] border border-[#d9c7b8] object-cover"
+        controls
+        src={attachment.previewUrl}
+      />
+    ) : null}
     {attachment.previewUrl && attachment.kind === "audio" ? (
       <audio className="mt-2 w-full" controls src={attachment.previewUrl} />
     ) : null}
@@ -263,6 +283,8 @@ const AgentComposer = ({
   const videoRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const videoStreamRef = useRef<MediaStream | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenChunksRef = useRef<Blob[]>([]);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLInputElement | null>(null);
@@ -277,6 +299,11 @@ const AgentComposer = ({
       audioRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
       videoStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+        screenRecorderRef.current.ondataavailable = null;
+        screenRecorderRef.current.onstop = null;
+        screenRecorderRef.current.stop();
+      }
     };
   }, []);
 
@@ -452,12 +479,14 @@ const AgentComposer = ({
   const handleScreenShare = async (): Promise<void> => {
     try {
       if (isSharingScreen) {
-        const screenAttachment = attachments.find(
-          (attachment) => attachment.kind === "screen"
-        );
-
-        if (screenAttachment) {
-          removeAttachment(screenAttachment.id);
+        // Stop recorder — onstop handler finalizes the recording blob
+        if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+          screenRecorderRef.current.stop();
+        } else {
+          const screenAttachment = attachmentsRef.current.find(
+            (attachment) => attachment.kind === "screen"
+          );
+          if (screenAttachment) removeAttachment(screenAttachment.id);
         }
         return;
       }
@@ -468,25 +497,50 @@ const AgentComposer = ({
       });
       const id = `screen-${Date.now()}`;
 
-      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-        removeAttachment(id);
-      });
-
       setAttachments((current) => [
         ...current.filter((attachment) => attachment.kind !== "screen"),
         {
           id,
           kind: "screen",
           name: "Live screen share",
-          sizeLabel: "Live capture",
+          sizeLabel: "Live",
           stream
         }
       ]);
       setIsSharingScreen(true);
-      setLocalStatus("Screen share attached.");
+      setLocalStatus("Screen recording started — stop sharing to save the recording.");
+
+      // Start recording the screen stream
+      const recorder = new MediaRecorder(stream);
+      screenChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) screenChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(screenChunksRef.current, { type: recorder.mimeType || "video/webm" });
+        const previewUrl = URL.createObjectURL(blob);
+        stream.getTracks().forEach((track) => track.stop());
+        setIsSharingScreen(false);
+        // Replace live attachment with recorded blob attachment
+        setAttachments((current) =>
+          current.map((attachment) =>
+            attachment.id === id
+              ? { id, kind: "screen" as const, name: "Screen recording", previewUrl, sizeLabel: sizeLabel(blob.size) }
+              : attachment
+          )
+        );
+        setLocalStatus("Screen recording saved — add a message and send.");
+      };
+      screenRecorderRef.current = recorder;
+      recorder.start();
+
+      // When the user ends sharing from the browser's built-in UI
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+          screenRecorderRef.current.stop();
+        }
+      });
     } catch {
       setIsSharingScreen(false);
-      setLocalStatus("Screen share allow karein to live preview attach ho sake.");
+      setLocalStatus("Screen share permission denied.");
     }
   };
 
@@ -1137,12 +1191,17 @@ export const AgentsWorkspace = ({
   const [builderMode, setBuilderMode] = useState<"create" | "edit">("create");
   const [statusMessage, setStatusMessage] = useState<string>("Choose a suggestion, template, or create a new agent.");
   const [chatAgentId, setChatAgentId] = useState<string | null>(null);
+  const [chatTaskId, setChatTaskId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ApiAgentMessage[]>([]);
   const [chatDraft, setChatDraft] = useState<string>("");
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null, [agents, selectedAgentId]);
   const chatAgent = useMemo(() => agents.find((agent) => agent.id === chatAgentId) ?? null, [agents, chatAgentId]);
+  const activeTask = useMemo(
+    () => tasks.find((task) => task.id === chatTaskId) ?? null,
+    [chatTaskId, tasks]
+  );
   const filteredSuggestions = useMemo(() => {
     const base = workspaceContent.suggestions;
     return selectedCategoryId ? base.filter((item) => item.categoryId === selectedCategoryId) : base;
@@ -1180,6 +1239,26 @@ export const AgentsWorkspace = ({
 
     void api.agentMessages(chatAgentId).then((messages) => setChatMessages(messages)).catch(() => setChatMessages([]));
   }, [chatAgentId]);
+
+  useEffect(() => {
+    if (chatTaskId && !tasks.some((task) => task.id === chatTaskId)) {
+      setChatTaskId(null);
+    }
+  }, [chatTaskId, tasks]);
+
+  const openAgentChat = (agentId: string): void => {
+    setSelectedAgentId(agentId);
+    setChatAgentId(agentId);
+    setChatTaskId(null);
+    setStatusMessage("Agent chat is open.");
+  };
+
+  const openTaskChat = (agentId: string, taskId: string): void => {
+    setSelectedAgentId(agentId);
+    setChatAgentId(agentId);
+    setChatTaskId(taskId);
+    setStatusMessage("New chat is ready.");
+  };
 
   const openCreateBuilder = (seed?: Partial<BuilderDraft>): void => {
     setBuilderMode("create");
@@ -1252,6 +1331,7 @@ export const AgentsWorkspace = ({
       setBuilderOpen(false);
       setShowNewAgentLibrary(false);
       setChatAgentId(savedAgent.id);
+      setChatTaskId(null);
       setStatusMessage(`${savedAgent.name} is ready and its chat is now open.`);
     } finally {
       setIsSaving(false);
@@ -1259,13 +1339,23 @@ export const AgentsWorkspace = ({
   };
 
   const handleAddTask = async (): Promise<void> => {
-    if (!selectedAgentId) {
-      setStatusMessage("Create or select an agent first.");
+    const agentId = selectedAgentId || agents[0]?.id;
+
+    if (!agentId) {
+      openCreateBuilder();
+      setStatusMessage("Create an agent first, then start a new chat.");
       return;
     }
 
-    const createdTask = await api.createAgentTask(selectedAgentId, { name: `New Task ${tasks.length + 1}` });
-    setTasks((current) => [...current, createdTask]);
+    const createdTask = await api.createAgentTask(agentId, {
+      name: `New Task ${tasks.length + 1}`
+    });
+
+    setTasks((current) =>
+      agentId === selectedAgentId ? [...current, createdTask] : [createdTask]
+    );
+
+    openTaskChat(agentId, createdTask.id);
   };
 
   const handleOpenComposerRequest = async (
@@ -1273,14 +1363,11 @@ export const AgentsWorkspace = ({
     attachments: ComposerAttachment[]
   ): Promise<void> => {
     const nextPrompt = text.trim() || "Help me plan the right agent for these materials.";
-    const attachmentNotes = attachments.length > 0
-      ? `\n\nAttached context:\n${describeAttachments(attachments)}`
-      : "";
-    const seededPrompt = `${nextPrompt}${attachmentNotes}`;
+    const mediaAttachments = attachments.map(toMediaAttachment);
 
     setComposerText("");
     setStatusMessage("Opening Chat Hub...");
-    onOpenChatHub(seededPrompt);
+    onOpenChatHub(nextPrompt, mediaAttachments);
   };
 
   const handleSendAgentMessage = async (
@@ -1293,31 +1380,60 @@ export const AgentsWorkspace = ({
       return;
     }
 
-    const attachmentNotes = attachments.length > 0
-      ? `\n\nAttachments:\n${describeAttachments(attachments)}`
-      : "";
-    const messageText = `${nextText || "Please review these attachments."}${attachmentNotes}`;
+    const attachmentSummary =
+      attachments.length > 0 ? describeAttachments(attachments) : "";
+    const nextPrompt = [
+      nextText || (attachments.length > 0 ? "Please review these attachments." : ""),
+      attachmentSummary ? `Attachments:\n${attachmentSummary}` : ""
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     setChatDraft("");
-    onOpenChatHub(messageText);
+
+    if (chatTaskId) {
+      const updatedTask = await api.addAgentTaskMessage(chatTaskId, {
+        role: "user",
+        text: nextPrompt
+      });
+
+      setTasks((current) =>
+        current.map((task) => (task.id === updatedTask.id ? updatedTask : task))
+      );
+      setStatusMessage("Chat updated.");
+      return;
+    }
+
+    await api.addAgentMessage(chatAgentId, { text: nextPrompt });
+    const updatedMessages = await api.agentMessages(chatAgentId);
+    setChatMessages(updatedMessages);
+    setStatusMessage("Chat updated.");
   };
 
   if (chatAgent) {
     const quickPrompts = ["What can you do?", "Give me a quick summary", "Show me an example", "How do you handle errors?", "What are your limits?"];
+    const conversationTitle = activeTask?.name ?? chatAgent.name;
+    const conversationMessages = activeTask
+      ? activeTask.messages.map((message, index) => ({
+          id: `${activeTask.id}-${message.role}-${index}`,
+          role: message.role,
+          text: message.text
+        }))
+      : chatMessages;
 
     return (
       <section className="min-h-[calc(100vh-53px)] bg-[#f6f2ec] text-[#1e1915]">
         <div className="border-b border-[#e6ddd3] bg-white px-5 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <button className="rounded-full border border-[#ddcfc2] px-4 py-2 text-[14px]" onClick={() => setChatAgentId(null)} type="button">← Agents</button>
+              <button className="rounded-full border border-[#ddcfc2] px-4 py-2 text-[14px]" onClick={() => { setChatAgentId(null); setChatTaskId(null); }} type="button">← Agents</button>
               <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#c8622a] text-[15px] font-semibold text-white">{chatAgent.name.slice(0, 2).toUpperCase()}</div>
               <div>
-                <div className="flex items-center gap-2"><h2 className="text-[30px] font-semibold tracking-[-0.04em]">{chatAgent.name}</h2><span className="rounded-full bg-[#e4f7ed] px-3 py-1 text-[12px] font-semibold text-[#168b55]">Live</span></div>
-                <p className="mt-1 text-[14px] text-[#7b6f63]">{chatAgent.category ?? "Custom Agent"} · Tools: {chatAgent.tools.join(", ") || "None"} · Memory: {chatAgent.memory.join(", ") || "None"}</p>
+                <div className="flex items-center gap-2"><h2 className="text-[30px] font-semibold tracking-[-0.04em]">{conversationTitle}</h2><span className="rounded-full bg-[#e4f7ed] px-3 py-1 text-[12px] font-semibold text-[#168b55]">Live</span></div>
+                <p className="mt-1 text-[14px] text-[#7b6f63]">{chatAgent.name} · {chatAgent.category ?? "Custom Agent"} · Tools: {chatAgent.tools.join(", ") || "None"}</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#ddd1c4] bg-white px-4 py-2 text-[14px]" onClick={openEditBuilder} type="button">Edit Agent</button></div>
+            <div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#ddd1c4] bg-white px-4 py-2 text-[14px]" onClick={() => void handleAddTask()} type="button">New Task</button><button className="rounded-full border border-[#ddd1c4] bg-white px-4 py-2 text-[14px]" onClick={openEditBuilder} type="button">Edit Agent</button></div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">{quickPrompts.map((prompt) => <button key={prompt} className="rounded-full border border-[#ddd1c4] bg-[#faf7f2] px-4 py-2 text-[13px] text-[#4f453c]" onClick={() => setChatDraft(prompt)} type="button">{prompt}</button>)}</div>
         </div>
@@ -1325,7 +1441,7 @@ export const AgentsWorkspace = ({
         <div className="grid min-h-[calc(100vh-160px)] grid-cols-[minmax(0,1fr)_240px]">
           <div className="flex flex-col">
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6">
-              {chatMessages.length === 0 ? <div className="max-w-[360px] rounded-[22px] border border-[#eadfd2] bg-white px-5 py-4"><p className="text-[20px]">Hi! I'm <span className="font-semibold">{chatAgent.name}</span>.</p><p className="mt-5 text-[16px]">How can I help you today?</p></div> : chatMessages.map((message) => <article key={message.id} className={`max-w-[680px] rounded-[22px] border px-5 py-4 ${message.role === "user" ? "ml-auto border-[#ead7c8] bg-[#fff4ea]" : "border-[#ece2d8] bg-white"}`}><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a18f81]">{message.role === "user" ? "You" : chatAgent.name}</p><p className="mt-3 text-[15px] leading-7 text-[#2f2620]">{message.text}</p></article>)}
+              {conversationMessages.length === 0 ? <div className="max-w-[360px] rounded-[22px] border border-[#eadfd2] bg-white px-5 py-4"><p className="text-[20px]">Hi! I'm <span className="font-semibold">{chatAgent.name}</span>.</p><p className="mt-5 text-[16px]">{activeTask ? "Let's get this new task moving." : "How can I help you today?"}</p></div> : conversationMessages.map((message) => <article key={message.id} className={`max-w-[680px] rounded-[22px] border px-5 py-4 ${message.role === "user" ? "ml-auto border-[#ead7c8] bg-[#fff4ea]" : "border-[#ece2d8] bg-white"}`}><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a18f81]">{message.role === "user" ? "You" : chatAgent.name}</p><p className="mt-3 whitespace-pre-line text-[15px] leading-7 text-[#2f2620]">{message.text}</p></article>)}
             </div>
             <div className="border-t border-[#e6ddd3] bg-white px-5 py-4">
               <AgentComposer
@@ -1342,6 +1458,7 @@ export const AgentsWorkspace = ({
           <aside className="border-l border-[#e6ddd3] bg-white px-4 py-5">
             <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a09081]">Agent Info</p>
             <div className="mt-4 space-y-3">
+              <div className="rounded-[18px] bg-[#f7f2eb] p-4"><p className="text-[13px] text-[#9d8f81]">Active Chat</p><p className="mt-2 text-[18px] font-semibold">{activeTask ? activeTask.name : "Main chat"}</p></div>
               <div className="rounded-[18px] bg-[#f7f2eb] p-4"><p className="text-[13px] text-[#9d8f81]">Status</p><p className="mt-2 text-[18px] font-semibold text-[#168b55]">Deployed & Live</p></div>
               <div className="rounded-[18px] bg-[#f7f2eb] p-4"><p className="text-[13px] text-[#9d8f81]">Audience</p><p className="mt-2 text-[18px] font-semibold">{chatAgent.audience || "General users"}</p></div>
               <div className="rounded-[18px] bg-[#f7f2eb] p-4"><p className="text-[13px] text-[#9d8f81]">Memory</p><p className="mt-2 text-[18px] font-semibold">{chatAgent.memory.join(", ") || "None"}</p></div>
@@ -1372,14 +1489,14 @@ export const AgentsWorkspace = ({
             </div>
 
             <div className="mt-5 border-t border-[#ece3d8] px-3 pt-5">
-              <div className="flex items-center justify-between rounded-[18px] border border-dashed border-[#d6c8bb] bg-[#fbf8f3] px-4 py-3"><span className="text-[14px] font-semibold">+ New Task</span><button className="text-[14px] text-[#7d7063]" onClick={() => void handleAddTask()} type="button">Add</button></div>
-              <div className="mt-4 space-y-1">{tasks.map((task) => <button key={task.id} className="flex w-full items-center gap-3 border-b border-[#efe7dd] px-3 py-4 text-left" onClick={() => setSelectedAgentId(task.agentId)} type="button"><span className="h-5 w-5 rounded-[6px] border border-[#d8cdc1] bg-white" /><span className="truncate text-[15px] text-[#2e271f]">{task.name}</span></button>)}</div>
+              <div className="flex items-center justify-between rounded-[18px] border border-dashed border-[#d6c8bb] bg-[#fbf8f3] px-4 py-3"><button className="text-[14px] font-semibold" onClick={() => void handleAddTask()} type="button">+ New Task</button><button className="text-[14px] text-[#7d7063]" onClick={() => void handleAddTask()} type="button">Add</button></div>
+              <div className="mt-4"><div className="mb-3 flex items-center gap-2 px-3"><p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a09081]">Your Agents</p><span className="rounded-[8px] bg-[#f0e8de] px-2 py-1 text-[11px]">{agents.length}</span></div><div className="space-y-1">{agents.map((agent) => <button key={`sidebar-library-${agent.id}`} className={`flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left ${chatAgentId === agent.id && !chatTaskId ? "bg-[#f6efe8]" : "hover:bg-[#faf6f1]"}`} onClick={() => openAgentChat(agent.id)} type="button"><span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-[#eef2fb] text-[14px] font-semibold">{agent.name.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold text-[#2e271f]">{agent.name}</span><span className="block truncate text-[12px] text-[#8b8074]">{agent.category ?? "Custom Agent"}</span></span></button>)}</div></div>
             </div>
           </aside>
 
           <aside className="border-r border-[#e6ddd3] bg-white">
             <div className="flex items-center justify-between border-b border-[#ece3d8] px-5 py-5"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#c8622a] text-[15px] font-semibold text-white">🤖</div><div><h3 className="text-[18px] font-semibold">My Agents</h3><p className="text-[13px] text-[#8e8276]">Choose a saved agent</p></div></div><button className="flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd0c4] text-[22px]" onClick={() => setShowNewAgentLibrary(false)} type="button">×</button></div>
-            <div className="space-y-3 px-3 py-4">{agents.map((agent) => <button key={agent.id} className={`flex w-full items-center justify-between rounded-[18px] border px-4 py-4 text-left ${selectedAgentId === agent.id ? "border-[#ead8c9] bg-[#faf7f2]" : "border-transparent bg-white hover:border-[#eadfd2]"}`} onClick={() => setSelectedAgentId(agent.id)} type="button"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#eef2fb] text-[16px]">{agent.name.slice(0, 1).toUpperCase()}</div><div><p className="text-[16px] font-semibold">{agent.name}</p><p className="text-[13px] text-[#8b8074]">{agent.tools[0] ?? "No tools"}</p></div></div><span className="h-3 w-3 rounded-full bg-[#35c46a]" /></button>)}</div>
+            <div className="space-y-3 px-3 py-4">{agents.map((agent) => <button key={agent.id} className={`flex w-full items-center justify-between rounded-[18px] border px-4 py-4 text-left ${selectedAgentId === agent.id ? "border-[#ead8c9] bg-[#faf7f2]" : "border-transparent bg-white hover:border-[#eadfd2]"}`} onClick={() => openAgentChat(agent.id)} type="button"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#eef2fb] text-[16px]">{agent.name.slice(0, 1).toUpperCase()}</div><div><p className="text-[16px] font-semibold">{agent.name}</p><p className="text-[13px] text-[#8b8074]">{agent.tools[0] ?? "No tools"}</p></div></div><span className="h-3 w-3 rounded-full bg-[#35c46a]" /></button>)}</div>
             <div className="border-t border-[#ece3d8] p-3"><button className="w-full rounded-[18px] bg-[#c8622a] px-5 py-4 text-[18px] font-semibold text-white" onClick={() => openCreateBuilder()} type="button">Create Custom Agent</button></div>
           </aside>
 
@@ -1402,7 +1519,7 @@ export const AgentsWorkspace = ({
               <div className="mt-6 border-t border-[#e8ded4] pt-5">
                 <div className="mb-4 flex items-center gap-2"><p className="text-[18px] font-semibold uppercase tracking-[0.08em] text-[#9b8e81]">Saved Agents</p><span className="rounded-[8px] bg-[#f0e8de] px-2 py-1 text-[12px]">{agents.length}</span></div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {agents.map((agent) => <button key={`saved-${agent.id}`} className="rounded-[22px] border border-[#e7ddd2] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#dbbda2]" onClick={() => { setSelectedAgentId(agent.id); setChatAgentId(agent.id); }} type="button"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#eef2fb] text-[16px]">{agent.name.slice(0, 1).toUpperCase()}</span><div><p className="text-[18px] font-semibold tracking-[-0.03em]">{agent.name}</p><p className="text-[13px] text-[#8b8074]">{agent.category ?? "Custom Agent"}</p></div></div><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${agent.status === "deployed" ? "bg-[#e4f7ed] text-[#168b55]" : "bg-[#f2ebe2] text-[#8a7b6c]"}`}>{agent.status}</span></div><p className="mt-4 line-clamp-3 text-[14px] leading-7 text-[#6b6156]">{agent.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(agent.tools ?? []).slice(0, 3).map((tool, index) => <span key={`${agent.id}-${tool}`} className={`rounded-full px-3 py-1 text-[12px] ${tagColorClasses[index % tagColorClasses.length]}`}>{tool}</span>)}</div></button>)}
+                  {agents.map((agent) => <button key={`saved-${agent.id}`} className="rounded-[22px] border border-[#e7ddd2] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#dbbda2]" onClick={() => openAgentChat(agent.id)} type="button"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#eef2fb] text-[16px]">{agent.name.slice(0, 1).toUpperCase()}</span><div><p className="text-[18px] font-semibold tracking-[-0.03em]">{agent.name}</p><p className="text-[13px] text-[#8b8074]">{agent.category ?? "Custom Agent"}</p></div></div><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${agent.status === "deployed" ? "bg-[#e4f7ed] text-[#168b55]" : "bg-[#f2ebe2] text-[#8a7b6c]"}`}>{agent.status}</span></div><p className="mt-4 line-clamp-3 text-[14px] leading-7 text-[#6b6156]">{agent.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(agent.tools ?? []).slice(0, 3).map((tool, index) => <span key={`${agent.id}-${tool}`} className={`rounded-full px-3 py-1 text-[12px] ${tagColorClasses[index % tagColorClasses.length]}`}>{tool}</span>)}</div></button>)}
                 </div>
               </div>
             </div>
@@ -1430,8 +1547,8 @@ export const AgentsWorkspace = ({
           </div>
 
           <div className="mt-5 border-t border-[#ece3d8] px-3 pt-5">
-            <div className="flex items-center justify-between rounded-[18px] border border-dashed border-[#d6c8bb] bg-[#fbf8f3] px-4 py-3"><span className="text-[14px] font-semibold">+ New Task</span><button className="text-[14px] text-[#7d7063]" onClick={() => void handleAddTask()} type="button">Add</button></div>
-            <div className="mt-4 space-y-1">{tasks.map((task) => <button key={task.id} className="flex w-full items-center gap-3 border-b border-[#efe7dd] px-3 py-4 text-left" onClick={() => setSelectedAgentId(task.agentId)} type="button"><span className="h-5 w-5 rounded-[6px] border border-[#d8cdc1] bg-white" /><span className="truncate text-[15px] text-[#2e271f]">{task.name}</span></button>)}</div>
+            <div className="flex items-center justify-between rounded-[18px] border border-dashed border-[#d6c8bb] bg-[#fbf8f3] px-4 py-3"><button className="text-[14px] font-semibold" onClick={() => void handleAddTask()} type="button">+ New Task</button><button className="text-[14px] text-[#7d7063]" onClick={() => void handleAddTask()} type="button">Add</button></div>
+            <div className="mt-4"><div className="mb-3 flex items-center gap-2 px-3"><p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a09081]">Your Agents</p><span className="rounded-[8px] bg-[#f0e8de] px-2 py-1 text-[11px]">{agents.length}</span></div><div className="space-y-1">{agents.map((agent) => <button key={`sidebar-${agent.id}`} className={`flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left ${chatAgentId === agent.id && !chatTaskId ? "bg-[#f6efe8]" : "hover:bg-[#faf6f1]"}`} onClick={() => openAgentChat(agent.id)} type="button"><span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-[#eef2fb] text-[14px] font-semibold">{agent.name.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold text-[#2e271f]">{agent.name}</span><span className="block truncate text-[12px] text-[#8b8074]">{agent.category ?? "Custom Agent"}</span></span></button>)}</div></div>
           </div>
         </aside>
 
@@ -1464,12 +1581,12 @@ export const AgentsWorkspace = ({
               </div>
             </div>
 
-            {selectedAgent ? <div className="mt-8 rounded-[24px] border border-[#e7ddd2] bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-[14px] font-semibold uppercase tracking-[0.14em] text-[#a09081]">Saved Agent</p><h3 className="mt-2 text-[34px] font-semibold tracking-[-0.04em]">{selectedAgent.name}</h3><p className="mt-2 max-w-[760px] text-[15px] leading-7 text-[#6d6258]">{selectedAgent.purpose}</p></div><div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#ddd1c4] px-4 py-2 text-[14px]" onClick={openEditBuilder} type="button">Edit Agent</button><button className="rounded-full bg-[#cb6d2e] px-4 py-2 text-[14px] font-semibold text-white" onClick={() => setChatAgentId(selectedAgent.id)} type="button">Open Agent Chat</button></div></div></div> : null}
+            {selectedAgent ? <div className="mt-8 rounded-[24px] border border-[#e7ddd2] bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-[14px] font-semibold uppercase tracking-[0.14em] text-[#a09081]">Saved Agent</p><h3 className="mt-2 text-[34px] font-semibold tracking-[-0.04em]">{selectedAgent.name}</h3><p className="mt-2 max-w-[760px] text-[15px] leading-7 text-[#6d6258]">{selectedAgent.purpose}</p></div><div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#ddd1c4] px-4 py-2 text-[14px]" onClick={openEditBuilder} type="button">Edit Agent</button><button className="rounded-full bg-[#cb6d2e] px-4 py-2 text-[14px] font-semibold text-white" onClick={() => openAgentChat(selectedAgent.id)} type="button">Open Agent Chat</button></div></div></div> : null}
 
             <div className="mt-8">
               <div className="mb-4 flex items-center gap-2"><p className="text-[18px] font-semibold uppercase tracking-[0.08em] text-[#9b8e81]">Your Agents</p><span className="rounded-[8px] bg-[#f0e8de] px-2 py-1 text-[12px]">{agents.length}</span></div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {agents.map((agent) => <button key={`dashboard-agent-${agent.id}`} className="rounded-[22px] border border-[#e7ddd2] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#dbbda2]" onClick={() => { setSelectedAgentId(agent.id); setChatAgentId(agent.id); }} type="button"><div className="flex items-center justify-between gap-3"><div><p className="text-[20px] font-semibold tracking-[-0.03em]">{agent.name}</p><p className="mt-1 text-[13px] text-[#8b8074]">{agent.category ?? "Custom Agent"} · {agent.audience ?? "General users"}</p></div><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${agent.status === "deployed" ? "bg-[#e4f7ed] text-[#168b55]" : "bg-[#f2ebe2] text-[#8a7b6c]"}`}>{agent.status}</span></div><p className="mt-4 line-clamp-3 text-[14px] leading-7 text-[#6b6156]">{agent.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(agent.tests ?? []).slice(0, 2).map((test, index) => <span key={`${agent.id}-test-${index}`} className={`rounded-full px-3 py-1 text-[12px] ${tagColorClasses[index % tagColorClasses.length]}`}>{test}</span>)}</div></button>)}
+                {agents.map((agent) => <button key={`dashboard-agent-${agent.id}`} className="rounded-[22px] border border-[#e7ddd2] bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-[#dbbda2]" onClick={() => openAgentChat(agent.id)} type="button"><div className="flex items-center justify-between gap-3"><div><p className="text-[20px] font-semibold tracking-[-0.03em]">{agent.name}</p><p className="mt-1 text-[13px] text-[#8b8074]">{agent.category ?? "Custom Agent"} · {agent.audience ?? "General users"}</p></div><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${agent.status === "deployed" ? "bg-[#e4f7ed] text-[#168b55]" : "bg-[#f2ebe2] text-[#8a7b6c]"}`}>{agent.status}</span></div><p className="mt-4 line-clamp-3 text-[14px] leading-7 text-[#6b6156]">{agent.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(agent.tests ?? []).slice(0, 2).map((test, index) => <span key={`${agent.id}-test-${index}`} className={`rounded-full px-3 py-1 text-[12px] ${tagColorClasses[index % tagColorClasses.length]}`}>{test}</span>)}</div></button>)}
               </div>
             </div>
           </div>

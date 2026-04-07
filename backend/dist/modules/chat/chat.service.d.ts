@@ -9,7 +9,7 @@ export declare class ChatService {
     history(sessionId: string): Promise<{
         sessionId: string;
         messages: {
-            role: "user" | "assistant";
+            role: "assistant" | "user";
             text: string;
             attachments: import("mongoose").FlattenMaps<import("./schemas/chat-conversation.schema").ChatConversationAttachment>[];
             createdAt: Date;
@@ -27,5 +27,4 @@ export declare class ChatService {
         saved: boolean;
     }>;
     private appendMessages;
-    private inferFocus;
 }

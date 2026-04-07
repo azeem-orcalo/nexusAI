@@ -34,6 +34,7 @@ import type {
   HomeUseCase,
   HomeWorkflowCategory,
   MarketplaceModelDetail,
+  MediaAttachment,
   ResearchFeedItem
 } from "./types/api";
 
@@ -153,6 +154,7 @@ const App = (): JSX.Element => {
   const [pendingChatRequest, setPendingChatRequest] = useState<{
     id: string;
     prompt: string;
+    attachments: MediaAttachment[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isChatHubLoading, setIsChatHubLoading] = useState<boolean>(false);
@@ -545,8 +547,8 @@ const App = (): JSX.Element => {
           <HeroSection
             content={heroApiContent}
             language={language}
-            onSubmitPrompt={(prompt) => {
-              setPendingChatRequest({ id: `home-search-${Date.now()}`, prompt });
+            onSubmitPrompt={(prompt, attachments) => {
+              setPendingChatRequest({ id: `home-search-${Date.now()}`, prompt, attachments: attachments ?? [] });
               handleNavigate("chat-hub");
             }}
             onSearchNavigate={(result) => {
@@ -571,7 +573,7 @@ const App = (): JSX.Element => {
           <HomeUseCasesSection
             items={homeUseCases}
             onOpenUseCase={(prompt) => {
-              setPendingChatRequest({ id: `use-case-${Date.now()}`, prompt });
+              setPendingChatRequest({ id: `use-case-${Date.now()}`, prompt, attachments: [] });
               handleNavigate("chat-hub");
             }}
             onSubscribe={() => handleNavigate(isAuthenticated ? "discover-new" : "auth")}
@@ -743,8 +745,8 @@ const App = (): JSX.Element => {
       return (
         <AgentsWorkspace
           agents={agents}
-          onOpenChatHub={(prompt) => {
-            setPendingChatRequest({ id: `agent-chat-${Date.now()}`, prompt });
+          onOpenChatHub={(prompt, attachments) => {
+            setPendingChatRequest({ id: `agent-chat-${Date.now()}`, prompt, attachments: attachments ?? [] });
             handleNavigate("chat-hub");
           }}
           onCreateAgent={async (payload) => {

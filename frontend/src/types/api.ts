@@ -378,6 +378,20 @@ export type AccountSettings = {
   persona: string;
 };
 
+/**
+ * A media attachment that can flow from any input surface (Hero, Agents, etc.)
+ * into the ChatHub message pipeline. Compatible with ComposerAttachment (subset).
+ */
+export type MediaAttachment = {
+  id: string;
+  /** "camera" = photo taken in-app; "image" = uploaded image file. */
+  kind: "audio" | "camera" | "file" | "image" | "screen" | "video";
+  name: string;
+  /** Object URL created by URL.createObjectURL — valid until revoked by ChatHub. */
+  previewUrl?: string;
+  sizeLabel?: string;
+};
+
 export type UpdateSettingsRequest = Partial<AccountSettings>;
 
 export type ApiKey = {
@@ -388,7 +402,7 @@ export type ApiKey = {
 };
 
 export type ChatAttachmentRequest = {
-  kind: "audio" | "camera" | "file" | "screen" | "video";
+  kind: "audio" | "camera" | "file" | "image" | "screen" | "video";
   name: string;
   sizeLabel?: string;
 };

@@ -2,6 +2,24 @@ import type { PropsWithChildren } from "react";
 import type { AppPage, CurrentUser } from "../../types/api";
 import { supportedLanguages } from "../../lib/i18n";
 
+const GlobeIcon = (): JSX.Element => (
+  <svg
+    aria-hidden="true"
+    fill="none"
+    height="13"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="1.8"
+    viewBox="0 0 24 24"
+    width="13"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
 type AppShellProps = PropsWithChildren<{
   currentPage: AppPage;
   language: string;
@@ -77,17 +95,20 @@ export const AppShell = ({
             </nav>
 
             <div className="flex items-center gap-2">
-              <select
-                className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f] outline-none transition hover:border-[#cdb8a4]"
-                onChange={(event) => onLanguageChange(event.target.value)}
-                value={language}
-              >
-                {supportedLanguages.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.code.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+              <label className="flex items-center gap-1.5 rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f] transition hover:border-[#cdb8a4] cursor-pointer">
+                <GlobeIcon />
+                <select
+                  className="bg-transparent outline-none cursor-pointer"
+                  onChange={(event) => onLanguageChange(event.target.value)}
+                  value={language}
+                >
+                  {supportedLanguages.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {user ? (
                 <>
                   <span className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f]">

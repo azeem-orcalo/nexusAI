@@ -6,21 +6,22 @@ import type {
 } from "../../data/mock/chatHub";
 import type {
   ChatHubPromptCategory,
-  ChatHubPromptSuggestion
+  ChatHubPromptSuggestion,
+  MediaAttachment
 } from "../../types/api";
 import { api } from "../../lib/api";
 import { getAltCamStream } from "../../lib/altcam";
 import { t } from "../../lib/i18n";
 
 type AppPage = "chat-hub" | "marketplace" | "agents" | "discover-new" | "dashboard" | "api-access" | "reviews" | "research";
-type InitialChatRequest = { id: string; prompt: string };
+type InitialChatRequest = { id: string; prompt: string; attachments?: MediaAttachment[] };
 type ChatHubShellProps = { language: string; models: ChatModel[]; quickActions: ChatAction[]; createActions: ChatAction[]; analysisActions: ChatAction[]; promptOptions: ChatPromptOption[]; promptCategories: ChatHubPromptCategory[]; promptSuggestions: ChatHubPromptSuggestion[]; userInitial?: string; onNavigate: (page: AppPage) => void; initialRequest?: InitialChatRequest | null; onInitialMessageHandled?: () => void; };
-type ComposerAttachment = { id: string; kind: "audio" | "camera" | "file" | "screen" | "video"; name: string; previewUrl?: string; sizeLabel?: string; stream?: MediaStream; };
+type ComposerAttachment = { id: string; kind: "audio" | "camera" | "file" | "image" | "screen" | "video"; name: string; previewUrl?: string; sizeLabel?: string; stream?: MediaStream; };
 type ChatMessage = { id: string; text: string; role: "assistant" | "user"; attachments?: ComposerAttachment[]; };
 type SpeechRec = { continuous: boolean; interimResults: boolean; lang: string; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal?: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void; };
 type BrowserWindow = Window & typeof globalThis & { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec; };
 
-const colors = { audio: "border-[#ead9cb] bg-[#fff4eb] text-[#b86835]", camera: "border-[#d9e8ff] bg-[#f2f7ff] text-[#356ec4]", file: "border-[#d8e7ff] bg-[#f1f7ff] text-[#3971c6]", screen: "border-[#d7efe3] bg-[#eefaf3] text-[#27815a]", video: "border-[#f2d7dd] bg-[#fff1f4] text-[#ba4962]" } as const;
+const colors = { audio: "border-[#ead9cb] bg-[#fff4eb] text-[#b86835]", camera: "border-[#d9e8ff] bg-[#f2f7ff] text-[#356ec4]", file: "border-[#d8e7ff] bg-[#f1f7ff] text-[#3971c6]", image: "border-[#d9e8ff] bg-[#f2f7ff] text-[#356ec4]", screen: "border-[#d7efe3] bg-[#eefaf3] text-[#27815a]", video: "border-[#f2d7dd] bg-[#fff1f4] text-[#ba4962]" } as const;
 const promptAccents = ["text-[#e07d34]","text-[#e08c49]","text-[#8b78d7]","text-[#e07d34]","text-[#64a0d7]","text-[#8f73c9]"] as const;
 const toolButtonStyles = { voice: "border-[#ded0ff] bg-[#f6f1ff] text-[#7c55e5]", file: "border-[#ffd89d] bg-[#fff6e8] text-[#df8b1d]", camera: "border-[#cfe0ff] bg-[#eff6ff] text-[#3b72ce]", video: "border-[#f5c9d1] bg-[#fff2f4] text-[#cf5972]", screen: "border-[#cde9da] bg-[#edf9f3] text-[#2d8f62]" } as const;
 const CHAT_SESSION_STORAGE_KEY = "nexusai-chat-session";
@@ -181,13 +182,23 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const voiceLoopActiveRef = useRef(false);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speechRef = useRef<SpeechRec | null>(null);
+  const voiceOutputEnabledRef = useRef(false);
+  const ttsResumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const cameraRecorderRef = useRef<MediaRecorder | null>(null);
   const cameraChunksRef = useRef<Blob[]>([]);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenChunksRef = useRef<Blob[]>([]);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
@@ -198,6 +209,17 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  // Keep ref in sync so async callbacks always see latest value (avoids stale closure)
+  useEffect(() => {
+    voiceOutputEnabledRef.current = voiceOutputEnabled;
+    if (!voiceOutputEnabled) {
+      voiceLoopActiveRef.current = false;
+      if (ttsResumeTimerRef.current) clearInterval(ttsResumeTimerRef.current);
+      window.speechSynthesis?.cancel();
+      setIsSpeaking(false);
+    }
+  }, [voiceOutputEnabled]);
 
   useEffect(() => {
     const existingSessionId = window.localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
@@ -249,6 +271,11 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     messagesRef.current.forEach((message) => message.attachments?.forEach(revokeAttachmentPreview));
+    // Revoke any blob URLs that were handed in via initialRequest but never sent
+    // (e.g. the user navigated away before the auto-send fired).
+    initialRequest?.attachments?.forEach((a) => {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    });
   }, []);
 
   useEffect(() => {
@@ -274,6 +301,64 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
     [activePromptCategoryId, promptSuggestions]
   );
   const shared = messages.flatMap((m) => m.attachments ?? []);
+
+  const speakText = (text: string): void => {
+    if (!voiceOutputEnabledRef.current) return;
+    if (!("speechSynthesis" in window)) return;
+
+    // Cancel any ongoing speech
+    if (ttsResumeTimerRef.current) clearInterval(ttsResumeTimerRef.current);
+    window.speechSynthesis.cancel();
+
+    const plain = text.replace(/[*_`#>~|\[\]()]/g, "").replace(/\n+/g, ". ").replace(/\s+/g, " ").trim();
+    if (!plain) return;
+
+    const doSpeak = (): void => {
+      const utterance = new SpeechSynthesisUtterance(plain.slice(0, 900));
+      utterance.rate = 1;
+      utterance.pitch = 1;
+
+      // Pick a natural English voice if available
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find((v) => v.lang.startsWith("en") && v.localService) ?? voices.find((v) => v.lang.startsWith("en")) ?? null;
+      if (preferred) utterance.voice = preferred;
+
+      const onDone = (): void => {
+        if (ttsResumeTimerRef.current) clearInterval(ttsResumeTimerRef.current);
+        ttsResumeTimerRef.current = null;
+        setIsSpeaking(false);
+        // Auto-restart mic for voice-to-voice loop
+        if (voiceLoopActiveRef.current && voiceOutputEnabledRef.current) {
+          void handleVoice();
+        }
+      };
+
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = onDone;
+      utterance.onerror = onDone;
+
+      window.speechSynthesis.speak(utterance);
+
+      // Chrome bug fix: resume if it silently pauses
+      ttsResumeTimerRef.current = setInterval(() => {
+        if (!window.speechSynthesis.speaking) {
+          if (ttsResumeTimerRef.current) clearInterval(ttsResumeTimerRef.current);
+          ttsResumeTimerRef.current = null;
+          setIsSpeaking(false);
+        } else if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      }, 250);
+    };
+
+    // Chrome: voices are loaded async — wait if not ready yet
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      window.speechSynthesis.addEventListener("voiceschanged", doSpeak, { once: true });
+    } else {
+      doSpeak();
+    }
+  };
 
   const sendAttachmentMessage = async (
     attachments: ComposerAttachment[],
@@ -315,11 +400,12 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
       };
 
       setMessages((current) => [...current, assistant]);
+      speakText(response.reply);
       setStatus("Attachment processed by backend");
     } catch {
       const assistant: ChatMessage = {
         id: `assistant-${Date.now()}`,
-        text: "Attachment backend tak gaya nahi. Please server check karein aur dobara try karein.",
+        text: "Attachment could not be sent. Please check the server and try again.",
         role: "assistant"
       };
 
@@ -345,9 +431,23 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
 
   const addFiles = (files: FileList | null, kind: ComposerAttachment["kind"]): void => {
     if (!files?.length) return;
-    const attachments = Array.from(files).map((file, index) => ({ id: `${kind}-${Date.now()}-${index}`, kind, name: file.name, previewUrl: kind === "audio" || kind === "camera" || kind === "video" ? URL.createObjectURL(file) : undefined, sizeLabel: sizeLabel(file.size) }));
-    const attachmentText = attachments.length > 1 ? `Shared ${attachments.length} ${kind} files` : `Shared ${kind} attachment`;
-    void sendAttachmentMessage(attachments, attachmentText);
+    const attachments = Array.from(files).map((file, index) => ({
+      id: `${kind}-${Date.now()}-${index}`,
+      kind,
+      name: file.name,
+      previewUrl: ["audio", "camera", "video", "file"].includes(kind) ? URL.createObjectURL(file) : undefined,
+      sizeLabel: sizeLabel(file.size)
+    }));
+    setPendingAttachments((prev) => [...prev, ...attachments]);
+    setStatus(`${attachments.length} file${attachments.length > 1 ? "s" : ""} attached — add a message and send`);
+  };
+
+  const removePendingAttachment = (id: string): void => {
+    setPendingAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target) revokeAttachmentPreview(target);
+      return prev.filter((a) => a.id !== id);
+    });
   };
   const stopCamera = (): void => { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); cameraStreamRef.current = null; setIsCameraOn(false); setIsRecordingVideo(false); };
   const clearLocalChatState = (): void => {
@@ -367,6 +467,13 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
     cameraRecorderRef.current = null;
     cameraChunksRef.current = [];
     stopCamera();
+    if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+      screenRecorderRef.current.ondataavailable = null;
+      screenRecorderRef.current.onstop = null;
+      screenRecorderRef.current.stop();
+    }
+    screenRecorderRef.current = null;
+    screenChunksRef.current = [];
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     setIsSharingScreen(false);
@@ -377,6 +484,8 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
       message.attachments?.forEach(revokeAttachmentPreview)
     );
     setMessages([]);
+    setPendingAttachments([]);
+    stopRecordingTimer();
   };
 
   const handleResetChat = async (): Promise<void> => {
@@ -404,50 +513,103 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
     }
   };
 
+  const stopRecordingTimer = (): void => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    setRecordingSeconds(0);
+  };
+
   const handleVoice = async (): Promise<void> => {
+    // ── STOP ──────────────────────────────────────────────────────────────────
     if (isListening) {
+      voiceLoopActiveRef.current = false;
       speechRef.current?.stop();
-      audioRecorderRef.current?.stop();
-      audioRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
-      audioRecorderRef.current = null;
+      speechRef.current = null;
+      audioRecorderRef.current?.stop(); // triggers onstop → adds audio to pending
+      // stream cleanup happens inside onstop after blob is captured
       setIsListening(false);
-      setStatus("Voice stopped");
+      stopRecordingTimer();
+      setStatus("Processing recording...");
       return;
     }
+
+    // ── START ─────────────────────────────────────────────────────────────────
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setStatus("Microphone not available in this browser");
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setStatus("Microphone permission denied — please allow access");
+      return;
+    }
+
+    // 1. MediaRecorder — always record the actual audio blob
+    audioChunksRef.current = [];
+    const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "" });
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) audioChunksRef.current.push(event.data);
+    };
+
+    recorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      audioRecorderRef.current = null;
+
+      if (!audioChunksRef.current.length) {
+        setStatus("No audio captured — try again");
+        return;
+      }
+
+      const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      const audioAttachment: ComposerAttachment = {
+        id: `audio-${Date.now()}`,
+        kind: "audio",
+        name: `voice-${Date.now()}.webm`,
+        previewUrl: URL.createObjectURL(blob),
+        sizeLabel: sizeLabel(blob.size)
+      };
+
+      setPendingAttachments((prev) => [...prev, audioAttachment]);
+      setStatus("Voice recorded — add a message (or send as-is)");
+    };
+
+    recorder.start(200); // collect data every 200ms for smoother progress
+    audioRecorderRef.current = recorder;
+
+    // 2. SpeechRecognition — run in parallel to fill the draft with transcription
     const browserWindow = window as BrowserWindow;
     const SpeechCtor = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
     if (SpeechCtor) {
       const rec = new SpeechCtor();
       speechRef.current = rec;
-      rec.continuous = false; rec.interimResults = true; rec.lang = "en-US";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = "en-US";
       rec.onresult = (event) => {
         const results = Array.from(event.results);
         const text = results.map((r) => r[0].transcript).join(" ").trim();
-        const isFinal = results.some((result) => result.isFinal);
-        if (text) {
-          setDraft(text);
-        }
-        if (text && isFinal) {
-          setStatus("Sending voice prompt...");
-          void handleSend(text);
-        }
+        if (text) setDraft(text);
       };
-      rec.onerror = () => { setIsListening(false); setStatus("Voice input failed"); };
-      rec.onend = () => setIsListening(false);
-      rec.start(); setIsListening(true); setStatus("Listening for voice input..."); return;
+      rec.onerror = () => { /* silent — we still have the audio blob */ };
+      rec.onend = () => { speechRef.current = null; };
+      try { rec.start(); } catch { /* ignore if already started */ }
     }
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setStatus("Voice recording is not available"); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream); audioChunksRef.current = [];
-      recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunksRef.current.push(event.data); };
-      recorder.onstop = () => {
-        if (!audioChunksRef.current.length) return;
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        void sendAttachmentMessage([{ id: `audio-${Date.now()}`, kind: "audio", name: `voice-note-${Date.now()}.webm`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared voice note");
-      };
-      recorder.start(); audioRecorderRef.current = recorder; setIsListening(true); setStatus("Recording voice note...");
-    } catch { setStatus("Microphone permission is required"); }
+
+    // 3. Recording timer
+    setRecordingSeconds(0);
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingSeconds((s) => s + 1);
+    }, 1000);
+
+    setIsListening(true);
+    if (voiceOutputEnabledRef.current) voiceLoopActiveRef.current = true;
+    setStatus(voiceOutputEnabledRef.current ? "🔴 Recording... (voice-to-voice on) — click mic to stop" : "🔴 Recording... — click mic to stop");
   };
 
   const handleCamera = async (): Promise<void> => {
@@ -462,7 +624,12 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
     canvas.width = cameraVideoRef.current.videoWidth || 1280; canvas.height = cameraVideoRef.current.videoHeight || 720;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((blob) => { if (!blob) return; void sendAttachmentMessage([{ id: `camera-${Date.now()}`, kind: "camera", name: `camera-shot-${Date.now()}.png`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared camera photo"); }, "image/png");
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const photo: ComposerAttachment = { id: `camera-${Date.now()}`, kind: "camera", name: `camera-shot-${Date.now()}.png`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) };
+      setPendingAttachments((prev) => [...prev, photo]);
+      setStatus("Photo captured — add a message and send");
+    }, "image/png");
   };
 
   const handleVideo = async (): Promise<void> => {
@@ -472,43 +639,115 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
       }
-      const stream = await getAltCamStream({ audio: true, requireAltCam: true });
+      const stream = await getAltCamStream({ audio: true, requireAltCam: false });
       cameraStreamRef.current = stream; setIsCameraOn(true);
       const recorder = new MediaRecorder(stream); cameraChunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size > 0) cameraChunksRef.current.push(event.data); };
-      recorder.onstop = () => { const blob = new Blob(cameraChunksRef.current, { type: recorder.mimeType || "video/webm" }); void sendAttachmentMessage([{ id: `video-${Date.now()}`, kind: "video", name: `altcam-video-${Date.now()}.webm`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) }], "Shared AltCam video"); };
-      cameraRecorderRef.current = recorder; recorder.start(); setIsRecordingVideo(true); setStatus("Recording video from AltCam...");
-    } catch { setStatus("AltCam was not found. Please select or install the AltCam/AlterCam camera first."); }
+      recorder.onstop = () => {
+        const blob = new Blob(cameraChunksRef.current, { type: recorder.mimeType || "video/webm" });
+        const videoAttachment: ComposerAttachment = { id: `video-${Date.now()}`, kind: "video", name: `camera-video-${Date.now()}.webm`, previewUrl: URL.createObjectURL(blob), sizeLabel: sizeLabel(blob.size) };
+        setPendingAttachments((prev) => [...prev, videoAttachment]);
+        setStatus("Video recorded — add a message and send");
+      };
+      cameraRecorderRef.current = recorder; recorder.start(); setIsRecordingVideo(true); setStatus("Recording video from camera...");
+    } catch { setStatus("Camera permission denied or not available."); }
   };
 
   const handleScreen = async (): Promise<void> => {
-    if (isSharingScreen && screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop()); screenStreamRef.current = null; setIsSharingScreen(false); setStatus("Screen sharing stopped"); return;
+    if (isSharingScreen) {
+      // Stop the recorder — onstop handler will finalize the recording blob
+      if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+        screenRecorderRef.current.stop();
+      } else {
+        screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+        setIsSharingScreen(false);
+        setPendingAttachments((prev) => prev.filter((a) => a.kind !== "screen"));
+        setStatus("Screen sharing stopped");
+      }
+      return;
     }
     if (!navigator.mediaDevices || !("getDisplayMedia" in navigator.mediaDevices)) { setStatus("Screen sharing is not supported"); return; }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
       const track = stream.getVideoTracks()[0];
-      screenStreamRef.current = stream; setIsSharingScreen(true);
-      void sendAttachmentMessage([{ id: `screen-${Date.now()}`, kind: "screen", name: track?.label || "screen-share", sizeLabel: "Live preview", stream }], "Started screen sharing");
-      track?.addEventListener("ended", () => { setIsSharingScreen(false); screenStreamRef.current = null; setStatus("Screen sharing stopped"); });
+      const attachmentId = `screen-${Date.now()}`;
+      screenStreamRef.current = stream;
+      setIsSharingScreen(true);
+      const screenAttachment: ComposerAttachment = { id: attachmentId, kind: "screen", name: track?.label || "screen-share", sizeLabel: "Live", stream };
+      setPendingAttachments((prev) => [...prev, screenAttachment]);
+      setStatus("Screen recording started — stop sharing to save the recording");
+
+      // Start recording the screen stream
+      const recorder = new MediaRecorder(stream);
+      screenChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) screenChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(screenChunksRef.current, { type: recorder.mimeType || "video/webm" });
+        const previewUrl = URL.createObjectURL(blob);
+        // Stop stream tracks after recording is done
+        screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+        setIsSharingScreen(false);
+        // Replace live attachment with recorded blob attachment
+        setPendingAttachments((prev) =>
+          prev.map((a) =>
+            a.id === attachmentId
+              ? { id: a.id, kind: "screen" as const, name: a.name, previewUrl, sizeLabel: sizeLabel(blob.size) }
+              : a
+          )
+        );
+        setStatus("Screen recording saved — add a message and send");
+      };
+      screenRecorderRef.current = recorder;
+      recorder.start();
+
+      // When the user ends sharing from the browser's built-in UI
+      track?.addEventListener("ended", () => {
+        if (screenRecorderRef.current && screenRecorderRef.current.state !== "inactive") {
+          screenRecorderRef.current.stop();
+        }
+      });
     } catch { setStatus("Screen sharing requires permission"); }
   };
 
-  const handleSend = async (overrideText?: string): Promise<void> => {
+  const handleSend = async (overrideText?: string, extraAttachments?: MediaAttachment[]): Promise<void> => {
     const text = (overrideText ?? draft).trim();
     if (isSending) { return; }
     if (!sessionId) { setStatus("Chat session is still loading"); return; }
-    if (!text) { setStatus("Add a message to continue"); return; }
+
+    // Merge any attachments passed in from an external source (Hero, Agents, etc.)
+    // with whatever is already staged in the composer.
+    const allAttachments: ComposerAttachment[] = [
+      ...(extraAttachments ?? []),
+      ...pendingAttachments
+    ];
+
+    if (!text && allAttachments.length === 0) { setStatus("Add a message or attachment to continue"); return; }
+
+    if (allAttachments.length > 0) {
+      const snapshot = allAttachments;
+      setPendingAttachments([]);
+      void sendAttachmentMessage(snapshot, text || `Shared ${snapshot.length} file${snapshot.length > 1 ? "s" : ""}`);
+      setDraft("");
+      return;
+    }
+
     const user: ChatMessage = { id: `user-${Date.now()}`, text, role: "user" };
-    setMessages((current) => [...current, user]); setDraft(""); setIsSending(true); setStatus("Sending to backend...");
+    setMessages((current) => [...current, user]);
+    setDraft("");
+    setIsSending(true);
+    setStatus("Sending to backend...");
     try {
       const response = await api.chatRespond({ sessionId, message: text, modelId: activeModel?.id });
       const assistant: ChatMessage = { id: `assistant-${Date.now()}`, text: response.reply, role: "assistant" };
-      setMessages((current) => [...current, assistant]); setStatus("Response received from backend");
+      setMessages((current) => [...current, assistant]);
+      speakText(response.reply);
+      setStatus("Response received from backend");
     } catch {
-      const assistant: ChatMessage = { id: `assistant-${Date.now()}`, text: "Backend chat API se response nahi aa saka. Please backend server check karein aur dobara try karein.", role: "assistant" };
-      setMessages((current) => [...current, assistant]); setStatus("Backend response failed");
+      const assistant: ChatMessage = { id: `assistant-${Date.now()}`, text: "Could not reach backend. Please check the server and try again.", role: "assistant" };
+      setMessages((current) => [...current, assistant]);
+      setStatus("Backend response failed");
     } finally {
       setIsSending(false);
     }
@@ -533,7 +772,7 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
 
     autoSentRequestRef.current = nextRequestId;
     setDraft(nextMessage);
-    void handleSend(nextMessage).finally(() => {
+    void handleSend(nextMessage, initialRequest?.attachments ?? []).finally(() => {
       onInitialMessageHandled?.();
     });
   }, [initialRequest, isHistoryLoaded, isSending, onInitialMessageHandled, sessionId]);
@@ -553,15 +792,99 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
           <div className="flex min-h-0 flex-1 px-5 pb-5 pt-6 lg:px-6">
             <div className="flex h-full min-h-0 w-full flex-col rounded-[28px] border border-[#e9e0d6] bg-[rgba(255,255,255,0.48)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-                {messages.length === 0 ? <div className="mx-auto mt-4 max-w-[600px] rounded-[30px] border border-[#eadfd2] bg-white px-8 py-9 text-center shadow-[0_20px_45px_rgba(86,62,35,0.08)]"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#f0d4c2] bg-[#fff8f2] text-[#6c655f]"><Icon kind="sparkle" /></div><h2 className="mt-7 text-[28px] font-semibold tracking-[-0.03em] text-[#1b1511]">Welcome! I'm here to help you</h2><p className="mx-auto mt-4 max-w-[470px] text-[15px] leading-7 text-[#766b61]">No tech background needed. Tell me what you'd like to achieve and I'll help you discover what's possible, step by step.</p><div className="mt-7 rounded-[24px] border border-[#e7dbcf] bg-[#f8f4ee] p-4 text-left"><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#db7c37]">{t(language, "chat_today")}</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{promptOptions.map((option, index) => <button key={option.id} className="rounded-[18px] border border-[#e5d8ca] bg-white px-4 py-5 text-center transition hover:-translate-y-0.5 hover:border-[#d8c3af]" onClick={() => { setDraft(option.title); setStatus("Prompt selected"); }} type="button"><div className={`text-[28px] ${promptAccents[index % promptAccents.length]}`}>{option.icon}</div><p className="mt-3 text-[16px] font-semibold text-[#211a15]">{option.title}</p><p className="mt-1 text-[12px] text-[#918477]">{option.subtitle}</p></button>)}</div></div><p className="mt-6 text-[14px] text-[#9a8d80]">{t(language, "chat_or_type")}</p></div> : <div className="mx-auto max-w-[860px] space-y-5">{messages.map((message) => <div key={message.id} className={`flex items-start gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>{message.role === "assistant" ? <ChatAvatar kind="assistant" userInitial={userInitial} /> : null}<article className={`rounded-[24px] border px-5 py-4 ${message.role === "user" ? "max-w-[85%] border-[#ead7c8] bg-[#fff6ee]" : "max-w-[90%] border-[#ece2d8] bg-white"}`}><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a18f81]">{message.role === "user" ? "You" : "Assistant"}</p><span className="text-[11px] text-[#ad9d8f]">{activeModel?.name ?? "Workspace"}</span></div><p className="mt-3 text-[15px] leading-7 text-[#2c241e]">{message.text}</p>{message.attachments?.length ? <div className="mt-4 flex flex-wrap gap-3">{message.attachments.map((attachment) => <div key={attachment.id} className={`rounded-[18px] border px-4 py-3 text-[12px] ${colors[attachment.kind]}`}><p className="font-semibold capitalize">{attachment.kind}: {attachment.name}</p>{attachment.sizeLabel ? <p className="mt-1 text-[11px] opacity-80">{attachment.sizeLabel}</p> : null}{attachment.kind === "audio" && attachment.previewUrl ? <audio className="mt-2 w-full" controls src={attachment.previewUrl} /> : null}{attachment.kind === "camera" && attachment.previewUrl ? <img alt={attachment.name} className="mt-2 max-h-[160px] w-full rounded-[12px] border border-current/10 object-cover" src={attachment.previewUrl} /> : null}{attachment.kind === "video" && attachment.previewUrl ? <video className="mt-2 max-h-[180px] w-full rounded-[12px] border border-current/10" controls src={attachment.previewUrl} /> : null}{attachment.kind === "screen" && attachment.stream ? <ScreenSharePreview stream={attachment.stream} /> : null}</div>)}</div> : null}</article>{message.role === "user" ? <ChatAvatar kind="user" userInitial={userInitial} /> : null}</div>)}</div>}
+                {messages.length === 0 ? <div className="mx-auto mt-4 max-w-[600px] rounded-[30px] border border-[#eadfd2] bg-white px-8 py-9 text-center shadow-[0_20px_45px_rgba(86,62,35,0.08)]"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#f0d4c2] bg-[#fff8f2] text-[#6c655f]"><Icon kind="sparkle" /></div><h2 className="mt-7 text-[28px] font-semibold tracking-[-0.03em] text-[#1b1511]">Welcome! I'm here to help you</h2><p className="mx-auto mt-4 max-w-[470px] text-[15px] leading-7 text-[#766b61]">No tech background needed. Tell me what you'd like to achieve and I'll help you discover what's possible, step by step.</p><div className="mt-7 rounded-[24px] border border-[#e7dbcf] bg-[#f8f4ee] p-4 text-left"><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#db7c37]">{t(language, "chat_today")}</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{promptOptions.map((option, index) => <button key={option.id} className="rounded-[18px] border border-[#e5d8ca] bg-white px-4 py-5 text-center transition hover:-translate-y-0.5 hover:border-[#d8c3af]" onClick={() => { setDraft(option.title); setStatus("Prompt selected"); }} type="button"><div className={`text-[28px] ${promptAccents[index % promptAccents.length]}`}>{option.icon}</div><p className="mt-3 text-[16px] font-semibold text-[#211a15]">{option.title}</p><p className="mt-1 text-[12px] text-[#918477]">{option.subtitle}</p></button>)}</div></div><p className="mt-6 text-[14px] text-[#9a8d80]">{t(language, "chat_or_type")}</p></div> : <div className="mx-auto max-w-[860px] space-y-5">{messages.map((message) => <div key={message.id} className={`flex items-start gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>{message.role === "assistant" ? <ChatAvatar kind="assistant" userInitial={userInitial} /> : null}<article className={`rounded-[24px] border px-5 py-4 ${message.role === "user" ? "max-w-[85%] border-[#ead7c8] bg-[#fff6ee]" : "max-w-[90%] border-[#ece2d8] bg-white"}`}><div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a18f81]">{message.role === "user" ? "You" : "Assistant"}</p><span className="text-[11px] text-[#ad9d8f]">{activeModel?.name ?? "Workspace"}</span></div><p className="mt-3 text-[15px] leading-7 text-[#2c241e]">{message.text}</p>{message.attachments?.length ? <div className="mt-4 flex flex-wrap gap-3">{message.attachments.map((attachment) => <div key={attachment.id} className={`rounded-[18px] border px-4 py-3 text-[12px] ${colors[attachment.kind]}`}><p className="font-semibold capitalize">{attachment.kind}: {attachment.name}</p>{attachment.sizeLabel ? <p className="mt-1 text-[11px] opacity-80">{attachment.sizeLabel}</p> : null}{attachment.kind === "audio" && attachment.previewUrl ? <audio className="mt-2 w-full" controls src={attachment.previewUrl} /> : null}{(attachment.kind === "camera" || attachment.kind === "image") && attachment.previewUrl ? <img alt={attachment.name} className="mt-2 max-h-[160px] w-full rounded-[12px] border border-current/10 object-cover" src={attachment.previewUrl} /> : null}{attachment.kind === "video" && attachment.previewUrl ? <video className="mt-2 max-h-[180px] w-full rounded-[12px] border border-current/10" controls src={attachment.previewUrl} /> : null}{attachment.kind === "screen" && attachment.previewUrl ? <video className="mt-2 max-h-[180px] w-full rounded-[12px] border border-current/10" controls src={attachment.previewUrl} /> : null}{attachment.kind === "screen" && !attachment.previewUrl && attachment.stream ? <ScreenSharePreview stream={attachment.stream} /> : null}{attachment.kind === "file" && attachment.previewUrl ? <a className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100" download={attachment.name} href={attachment.previewUrl}>↓ Download {attachment.name}</a> : null}</div>)}</div> : null}</article>{message.role === "user" ? <ChatAvatar kind="user" userInitial={userInitial} /> : null}</div>)}</div>}
               </div>
 
               <div className="border-t border-[#e7ddd3] bg-white/75 px-4 py-4 lg:px-6">
-                <div className="rounded-[24px] border border-[#decfbf] bg-[#fbf8f3] shadow-[0_12px_26px_rgba(83,59,31,0.05)]"><textarea className="min-h-[54px] w-full resize-none rounded-t-[24px] bg-transparent px-5 py-4 text-[16px] leading-7 text-[#241c17] outline-none placeholder:text-[#9d9185]" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void handleSend(); } }} placeholder="Describe your project, ask a question, or just say hi. I'm here to help..." rows={2} value={draft} /><div className="flex flex-wrap items-center gap-2 border-t border-[#e8ded4] px-4 py-3"><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.voice} ${isListening ? "ring-2 ring-[#d8c9ff]" : ""}`} onClick={() => void handleVoice()} type="button"><Icon kind="voice" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.file}`} onClick={() => fileRef.current?.click()} type="button"><Icon kind="file" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.camera} ${isCameraOn ? "ring-2 ring-[#cadcff]" : ""}`} onClick={() => void handleCamera()} type="button"><Icon kind="camera" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.video} ${isRecordingVideo ? "ring-2 ring-[#f3c6cf]" : ""}`} onClick={() => void handleVideo()} title={isRecordingVideo ? "Stop AltCam recording" : "Record with AltCam"} type="button"><Icon kind="video" /></button><button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.screen} ${isSharingScreen ? "ring-2 ring-[#bfe4ce]" : ""}`} onClick={() => void handleScreen()} type="button"><Icon kind="screen" /></button><div className="ml-auto flex items-center gap-3"><span className="hidden text-[13px] text-[#ae9b89] lg:inline">{activeModel ? `${activeModel.name} by ${activeModel.provider}` : t(language, "no_model_selected")}</span><button className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#c96b2e] text-white transition hover:bg-[#b75d22]" onClick={() => void handleSend()} type="button"><Icon kind="send" className="h-5 w-5" /></button></div></div></div>
-                <input className="hidden" multiple onChange={(event) => addFiles(event.target.files, "file")} ref={fileRef} type="file" />
-                <input accept="image/*" capture="environment" className="hidden" onChange={(event) => addFiles(event.target.files, "camera")} ref={imageRef} type="file" />
-                <input accept="audio/*" className="hidden" multiple onChange={(event) => addFiles(event.target.files, "audio")} ref={audioRef} type="file" />
-                {isCameraOn ? <div className="mt-3 rounded-[22px] border border-[#dbe5f3] bg-[#f5f9ff] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#406cb7]">AltCam Preview</p><div className="flex flex-wrap gap-2"><button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={capturePhoto} type="button">Capture photo</button><button className={`rounded-full px-3 py-2 text-[11px] font-semibold text-white ${isRecordingVideo ? "bg-[#cf5972]" : "bg-[#ca6a2f]"}`} onClick={() => void handleVideo()} type="button">{isRecordingVideo ? "Stop AltCam" : "Record with AltCam"}</button><button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={stopCamera} type="button">Close camera</button></div></div><video autoPlay className="mt-3 max-h-[240px] w-full rounded-[16px] border border-[#d7e3f1] bg-[#1e1a18] object-cover" muted playsInline ref={cameraVideoRef} /></div> : null}
+                <div className="rounded-[24px] border border-[#decfbf] bg-[#fbf8f3] shadow-[0_12px_26px_rgba(83,59,31,0.05)]">
+                  {pendingAttachments.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 border-b border-[#e8ded4] px-4 pt-3 pb-3">
+                      {pendingAttachments.map((a) => (
+                        <div key={a.id} className={`flex flex-col gap-1 rounded-[14px] border px-3 py-2 text-[12px] font-medium ${colors[a.kind]}`}>
+                          <div className="flex items-center gap-2">
+                            {a.kind === "camera" && a.previewUrl ? <img alt="" className="h-8 w-8 rounded-[8px] object-cover" src={a.previewUrl} /> : null}
+                            {a.kind === "screen" && a.stream ? <video autoPlay className="h-8 w-12 rounded-[6px] object-cover" muted playsInline ref={(el) => { if (el && a.stream) el.srcObject = a.stream; }} /> : null}
+                            <span className="max-w-[140px] truncate capitalize">{a.kind === "audio" ? "🎙 Voice" : a.kind}: {a.name}</span>
+                            {a.sizeLabel ? <span className="opacity-60">{a.sizeLabel}</span> : null}
+                            <button className="ml-1 text-[14px] opacity-60 hover:opacity-100" onClick={() => removePendingAttachment(a.id)} title="Remove" type="button">✕</button>
+                          </div>
+                          {a.kind === "audio" && a.previewUrl ? (
+                            <audio className="mt-1 h-8 w-full" controls src={a.previewUrl} />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <textarea className="min-h-[54px] w-full resize-none rounded-t-[24px] bg-transparent px-5 py-4 text-[16px] leading-7 text-[#241c17] outline-none placeholder:text-[#9d9185]" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void handleSend(); } }} placeholder="Describe your project, ask a question, or just say hi. I'm here to help..." rows={2} value={draft} />
+                  {isListening ? (
+                    <div className="flex items-center gap-3 border-b border-[#e8ded4] px-4 py-2">
+                      <span className="relative flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                      </span>
+                      <span className="text-[13px] font-semibold text-red-600">
+                        Recording {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
+                      </span>
+                      <span className="text-[12px] text-[#9a8d80]">Speak now — click mic to stop</span>
+                      <button
+                        className="ml-auto rounded-full bg-red-500 px-3 py-1 text-[11px] font-semibold text-white"
+                        onClick={() => void handleVoice()}
+                        type="button"
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-[#e8ded4] px-4 py-3">
+                    <button
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border transition ${isListening ? "border-red-300 bg-red-50 text-red-500 ring-2 ring-red-200" : toolButtonStyles.voice}`}
+                      onClick={() => void handleVoice()}
+                      title={isListening ? "Stop recording" : "Record voice message"}
+                      type="button"
+                    >
+                      <Icon kind="voice" />
+                    </button>
+                    <button
+                      className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3 h-10 text-[11px] font-semibold transition ${voiceOutputEnabled ? "border-[#ded0ff] bg-[#7c55e5] text-white" : "border-[#ded0ff] bg-[#f6f1ff] text-[#7c55e5]"} ${isSpeaking ? "ring-2 ring-[#d8c9ff]" : ""}`}
+                      onClick={() => {
+                        const next = !voiceOutputEnabledRef.current;
+                        voiceOutputEnabledRef.current = next;
+                        voiceLoopActiveRef.current = next;
+                        setVoiceOutputEnabled(next);
+                        if (!next) { window.speechSynthesis?.cancel(); setIsSpeaking(false); }
+                      }}
+                      title={voiceOutputEnabled ? "Voice reply ON — AI speaks responses. Click to turn off" : "Voice reply OFF — click to hear AI responses spoken aloud"}
+                      type="button"
+                    >
+                      <Icon kind="voice" className="h-3.5 w-3.5" />
+                      <span>{isSpeaking ? "Speaking..." : voiceOutputEnabled ? "Voice Reply ON" : "Voice Reply"}</span>
+                    </button>
+                    <button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.file}`} onClick={() => fileRef.current?.click()} title="Attach files" type="button"><Icon kind="file" /></button>
+                    <button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.camera} ${isCameraOn ? "ring-2 ring-[#cadcff]" : ""}`} onClick={() => void handleCamera()} title={isCameraOn ? "Close camera" : "Open webcam / camera"} type="button"><Icon kind="camera" /></button>
+                    <button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.video} ${isRecordingVideo ? "ring-2 ring-[#f3c6cf]" : ""}`} onClick={() => void handleVideo()} title={isRecordingVideo ? "Stop recording" : "Record video with webcam"} type="button"><Icon kind="video" /></button>
+                    <button className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] border ${toolButtonStyles.screen} ${isSharingScreen ? "ring-2 ring-[#bfe4ce]" : ""}`} onClick={() => void handleScreen()} title={isSharingScreen ? "Stop screen sharing" : "Share your screen"} type="button"><Icon kind="screen" /></button>
+                    <div className="ml-auto flex items-center gap-3">
+                      <span className="hidden text-[13px] text-[#ae9b89] lg:inline">{activeModel ? `${activeModel.name} by ${activeModel.provider}` : t(language, "no_model_selected")}</span>
+                      <button className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#c96b2e] text-white transition hover:bg-[#b75d22]" onClick={() => void handleSend()} type="button"><Icon kind="send" className="h-5 w-5" /></button>
+                    </div>
+                  </div>
+                </div>
+                <input className="hidden" multiple onChange={(event) => { addFiles(event.target.files, "file"); if (fileRef.current) fileRef.current.value = ""; }} ref={fileRef} type="file" />
+                <input accept="image/*" className="hidden" onChange={(event) => { addFiles(event.target.files, "camera"); if (imageRef.current) imageRef.current.value = ""; }} ref={imageRef} type="file" />
+                <input accept="audio/*" className="hidden" multiple onChange={(event) => { addFiles(event.target.files, "audio"); if (audioRef.current) audioRef.current.value = ""; }} ref={audioRef} type="file" />
+                {isCameraOn ? (
+                  <div className="mt-3 rounded-[22px] border border-[#dbe5f3] bg-[#f5f9ff] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#406cb7]">Camera Preview</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={capturePhoto} type="button">Capture photo</button>
+                        <button className={`rounded-full px-3 py-2 text-[11px] font-semibold text-white ${isRecordingVideo ? "bg-[#cf5972]" : "bg-[#ca6a2f]"}`} onClick={() => void handleVideo()} type="button">{isRecordingVideo ? "Stop recording" : "Record video"}</button>
+                        <button className="rounded-full border border-[#cfdbef] bg-white px-3 py-2 text-[11px] font-semibold text-[#47618f]" onClick={stopCamera} type="button">Close camera</button>
+                      </div>
+                    </div>
+                    <video autoPlay className="mt-3 max-h-[240px] w-full rounded-[16px] border border-[#d7e3f1] bg-[#1e1a18] object-cover" muted playsInline ref={cameraVideoRef} />
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-2">{promptCategories.map((category, index) => <button key={category.id} className={`rounded-full border px-4 py-2 text-[13px] transition ${activePromptCategoryId === category.id ? "border-[#1f1a16] bg-[#1f1a16] text-white" : index === 0 ? "border-[#ddd1c4] bg-white text-[#54493f] hover:border-[#ccb9a6]" : "border-[#ddd1c4] bg-white text-[#54493f] hover:border-[#ccb9a6]"}`} onClick={() => { setActivePromptCategoryId(category.id); setStatus(`${category.label} prompts loaded`); }} type="button">{category.label}</button>)}</div>
                 <div className="mt-4 grid gap-2 text-[14px] text-[#7b6e62] lg:grid-cols-2">{filteredPromptSuggestions.map((suggestion) => <button key={suggestion.id} className="text-left transition hover:text-[#c96b2e]" onClick={() => { setDraft(suggestion.prompt); setStatus("Prompt added to composer"); }} type="button">• {suggestion.label}</button>)}</div>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
