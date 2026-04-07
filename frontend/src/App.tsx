@@ -20,22 +20,20 @@ import { api } from "./lib/api";
 import { isRtlLanguage, t } from "./lib/i18n";
 import type { ChatAction, ChatPromptOption, ChatSuggestion } from "./data/mock/chatHub";
 import type { HeroContent } from "./data/mock/home";
-import type { ModelDetail } from "./data/mock/marketplace";
 import type {
   AccountSettings,
   ApiAgent,
   ApiAgentTemplate,
   ApiKey,
   ApiModel,
-  ApiModelDetail,
   ApiModelFilters,
-  ApiReview,
   AppPage,
   ChatHubContent as ApiChatHubContent,
   DashboardOverview,
   DashboardUsagePoint,
   HomeUseCase,
   HomeWorkflowCategory,
+  MarketplaceModelDetail,
   ResearchFeedItem
 } from "./types/api";
 
@@ -117,58 +115,6 @@ const quickActionIconMap: Record<string, string> = {
 
 const toSlug = (value: string): string => value.toLowerCase().split(" ").join("-");
 
-const toModelDetail = (
-  detail: ApiModelDetail,
-  reviews: ApiReview[]
-): ModelDetail => ({
-  id: detail.id,
-  name: detail.name,
-  subtitle: `by ${detail.provider} · ${detail.category} model`,
-  overview: detail.description,
-  input: "Text, images, audio, PDFs",
-  output: "Text, code, structured data",
-  context: `${detail.contextWindow.toLocaleString()} tokens`,
-  maxOutput: detail.pricing?.output ?? "10 / 1M",
-  latency: `${detail.latencyMs}ms avg`,
-  useCases: detail.useCases.map((useCase) => ({
-    id: useCase,
-    label: useCase,
-    icon: "•"
-  })),
-  examplePrompt:
-    "Summarize this research paper in 3 bullet points and suggest 2 follow-up questions.",
-  exampleResponse:
-    reviews.length > 0
-      ? reviews.map((review) => `${review.authorName}: ${review.comment}`)
-      : ["No reviews yet. This model is ready for evaluation workflows."],
-  followUps: [
-    detail.promptGuide ?? "Use explicit goals and constraints in prompts.",
-    `Average rating: ${detail.averageRating.toFixed(1)}`
-  ],
-  benchmarks: [
-    {
-      id: "mmlu",
-      label: "MMLU",
-      value: `${detail.benchmarks?.mmlu ?? 0}`
-    },
-    {
-      id: "human-eval",
-      label: "HumanEval",
-      value: `${detail.benchmarks?.humanEval ?? 0}`
-    },
-    {
-      id: "math",
-      label: "MATH",
-      value: `${detail.benchmarks?.math ?? 0}`
-    },
-    {
-      id: "rating",
-      label: "Rating",
-      value: detail.averageRating.toFixed(1)
-    }
-  ]
-});
-
 const App = (): JSX.Element => {
   const { user, session, signOut, isAuthenticated, isLoading: authLoading } =
     useAuth();
@@ -203,7 +149,7 @@ const App = (): JSX.Element => {
     null
   );
   const [selectedModelDetail, setSelectedModelDetail] =
-    useState<ModelDetail | null>(null);
+    useState<MarketplaceModelDetail | null>(null);
   const [pendingChatRequest, setPendingChatRequest] = useState<{
     id: string;
     prompt: string;
@@ -325,7 +271,7 @@ const App = (): JSX.Element => {
   }, [currentPage]);
 
   useEffect(() => {
-    if (!session?.token) {
+    if (!session?.token || session.isGuest) {
       setSettings(null);
       setApiKeys([]);
       return;
@@ -341,12 +287,12 @@ const App = (): JSX.Element => {
         setSettings(null);
         setApiKeys([]);
       });
-  }, [session?.token]);
+  }, [session?.isGuest, session?.token]);
 
   const handleLanguageChange = (nextLanguage: string): void => {
     setLanguage(nextLanguage);
     window.localStorage.setItem("nexusai-language", nextLanguage);
-    if (session?.token) {
+    if (session?.token && !session.isGuest) {
       void api
         .updateSettings({ language: nextLanguage }, session.token)
         .then((nextSettings) => setSettings(nextSettings))
@@ -373,7 +319,12 @@ const App = (): JSX.Element => {
       api.modelDetail(selectedModelId),
       api.modelReviews(selectedModelId)
     ])
-      .then(([detail, reviews]) => setSelectedModelDetail(toModelDetail(detail, reviews)))
+      .then(([detail, reviews]) =>
+        setSelectedModelDetail({
+          ...detail,
+          reviews
+        })
+      )
       .catch(() => setSelectedModelDetail(null));
   }, [selectedModelId]);
 
@@ -869,4 +820,5 @@ const App = (): JSX.Element => {
 };
 
 export default App;
+
 

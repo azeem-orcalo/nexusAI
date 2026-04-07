@@ -52,14 +52,14 @@ export const AppShell = ({
                   N
                 </div>
                 <div>
-                  <p className="text-sm font-semibold tracking-tight text-[#1e1915]">
+                  <p className="text-[16px] font-semibold tracking-tight text-[#1e1915]">
                     NexusAI
                   </p>
                 </div>
               </button>
             </div>
 
-            <nav className="hidden items-center gap-6 text-[11px] text-[#5f564e] md:flex">
+            <nav className="hidden items-center gap-7 text-[13px] text-[#5f564e] md:flex">
               {navItems.map((item) => (
                 <button
                   key={item.id}
@@ -78,7 +78,7 @@ export const AppShell = ({
 
             <div className="flex items-center gap-2">
               <select
-                className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f] outline-none transition hover:border-[#cdb8a4]"
+                className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f] outline-none transition hover:border-[#cdb8a4]"
                 onChange={(event) => onLanguageChange(event.target.value)}
                 value={language}
               >
@@ -90,11 +90,11 @@ export const AppShell = ({
               </select>
               {user ? (
                 <>
-                  <span className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f]">
+                  <span className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f]">
                     {user.fullName}
                   </span>
                   <button
-                    className="rounded-full bg-[#c76b2c] px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-[#b55f25]"
+                    className="rounded-full bg-[#c76b2c] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#b55f25]"
                     onClick={onSignOut}
                     type="button"
                   >
@@ -104,14 +104,14 @@ export const AppShell = ({
               ) : (
                 <>
                   <button
-                    className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[10px] font-medium text-[#4f463f] transition hover:border-[#cdb8a4]"
+                    className="rounded-full border border-[#ddd0c1] bg-white px-3 py-1.5 text-[12px] font-medium text-[#4f463f] transition hover:border-[#cdb8a4]"
                     onClick={() => onNavigate("auth")}
                     type="button"
                   >
                     {labels.signIn}
                   </button>
                   <button
-                    className="rounded-full bg-[#c76b2c] px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-[#b55f25]"
+                    className="rounded-full bg-[#c76b2c] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#b55f25]"
                     onClick={() => onNavigate("auth")}
                     type="button"
                   >

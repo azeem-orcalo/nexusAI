@@ -26,7 +26,7 @@ export const AuthPanel = ({
   onClose,
   onSuccess
 }: AuthPanelProps): JSX.Element => {
-  const { signIn, signUp, isLoading } = useAuth();
+  const { signIn, signUp, signInAsGuest, isLoading } = useAuth();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [fullName, setFullName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
@@ -81,6 +81,12 @@ export const AuthPanel = ({
   const switchMode = (nextMode: "sign-in" | "sign-up"): void => {
     setMode(nextMode);
     setError("");
+  };
+
+  const handleGuestAccess = (label = "Guest"): void => {
+    setError("");
+    signInAsGuest(label);
+    onSuccess();
   };
 
   return (
@@ -157,16 +163,11 @@ export const AuthPanel = ({
                   ) : null}
                 </button>
                 <button
-                  className={`relative pb-4 transition ${
-                    isSignUp ? "text-[#d77433]" : "hover:text-[#4c4036]"
-                  }`}
-                  onClick={() => switchMode("sign-up")}
+                  className="relative pb-4 text-[#b86a32] transition hover:text-[#9e5724]"
+                  onClick={() => handleGuestAccess()}
                   type="button"
                 >
-                  {t(language, "create_account")}
-                  {isSignUp ? (
-                    <span className="absolute inset-x-0 bottom-[-1px] h-0.5 rounded-full bg-[#d77433]" />
-                  ) : null}
+                  {t(language, "guest_access")}
                 </button>
               </div>
 
@@ -281,6 +282,7 @@ export const AuthPanel = ({
                   <button
                     key={provider.id}
                     className="flex items-center justify-center gap-3 rounded-[16px] border border-[#ddd2c6] bg-white px-4 py-3 text-[15px] font-medium text-[#2a231d] transition hover:border-[#d0bca9] hover:bg-[#fffdfa]"
+                    onClick={() => handleGuestAccess(provider.label)}
                     type="button"
                   >
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f5efe8] text-[11px] font-semibold text-[#cf6929]">
@@ -292,13 +294,13 @@ export const AuthPanel = ({
               </div>
 
               <p className="mt-8 text-center text-[15px] text-[#7f766e]">
-                {isSignUp ? t(language, "already_have_account") : t(language, "need_account")}{" "}
+                {t(language, "auth_guest_desc")}{" "}
                 <button
                   className="font-semibold text-[#d77433] transition hover:text-[#b75e23]"
-                  onClick={() => switchMode(isSignUp ? "sign-in" : "sign-up")}
+                  onClick={() => handleGuestAccess()}
                   type="button"
                 >
-                  {isSignUp ? `${t(language, "sign_in")} ->` : `${t(language, "create_account_cta")} ->`}
+                  {`${t(language, "continue_as_guest")} ->`}
                 </button>
               </p>
             </div>

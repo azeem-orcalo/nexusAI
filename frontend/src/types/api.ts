@@ -28,6 +28,7 @@ export type AuthSession = {
   token: string;
   fullName?: string;
   language?: string;
+  isGuest?: boolean;
 };
 
 export type CurrentUser = {
@@ -36,6 +37,7 @@ export type CurrentUser = {
   email: string;
   language: string;
   isActive: boolean;
+  isGuest?: boolean;
 };
 
 export type ApiModel = {
@@ -64,16 +66,70 @@ export type ApiModelFilters = {
   maxPrice: number;
 };
 
+export type ApiModelDetailTabId =
+  | "overview"
+  | "howToUse"
+  | "pricing"
+  | "promptGuide"
+  | "agentCreation"
+  | "reviews";
+
+export type ApiModelDetailTab = {
+  id: ApiModelDetailTabId;
+  label: string;
+};
+
+export type ApiModelDetailUseCase = {
+  id: string;
+  label: string;
+  icon: string;
+};
+
+export type ApiModelDetailBenchmark = {
+  id: string;
+  label: string;
+  value: string;
+};
+
 export type ApiModelDetail = ApiModel & {
-  pricing?: {
+  subtitle: string;
+  tabs: ApiModelDetailTab[];
+  overview: {
+    description: string;
     input: string;
     output: string;
+    context: string;
+    maxOutput: string;
+    latency: string;
+    useCases: ApiModelDetailUseCase[];
+    examplePrompt: string;
+    exampleResponse: string[];
+    followUps: string[];
+    benchmarks: ApiModelDetailBenchmark[];
   };
-  promptGuide?: string;
-  benchmarks?: {
-    mmlu: number;
-    humanEval: number;
-    math: number;
+  howToUse: {
+    summary: string;
+    steps: string[];
+    checklist: string[];
+  };
+  pricing: {
+    input: string;
+    output: string;
+    billing: string;
+    enterprise: string;
+    notes: string[];
+  };
+  promptGuide: {
+    summary: string;
+    tips: string[];
+    starterPrompt: string;
+    examples: string[];
+  };
+  agentCreation: {
+    summary: string;
+    steps: string[];
+    recommendedTools: string[];
+    deploymentNotes: string[];
   };
 };
 
@@ -84,6 +140,10 @@ export type ApiReview = {
   rating: number;
   comment: string;
   verified: boolean;
+};
+
+export type MarketplaceModelDetail = ApiModelDetail & {
+  reviews: ApiReview[];
 };
 
 export type ApiAgent = {

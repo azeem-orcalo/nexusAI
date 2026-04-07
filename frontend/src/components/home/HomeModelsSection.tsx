@@ -14,8 +14,10 @@ export const HomeModelsSection = ({
   onSeeAll
 }: HomeModelsSectionProps): JSX.Element => {
   return (
-    <section className="border-t border-[#ece1d5] bg-white px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-5 flex items-center justify-between gap-4">
+    <section className="border-t border-[#ece1d5] bg-white">
+      <div className="px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1840px]">
+          <div className="mb-5 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-[24px] font-semibold tracking-[-0.03em] text-[#211c17]">
             Model Marketplace
@@ -34,7 +36,7 @@ export const HomeModelsSection = ({
         </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {models.map((model) => (
           <button
             key={model.id}
@@ -93,6 +95,8 @@ export const HomeModelsSection = ({
             </div>
           </button>
         ))}
+          </div>
+        </div>
       </div>
     </section>
   );

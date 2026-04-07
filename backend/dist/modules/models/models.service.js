@@ -198,6 +198,50 @@ let ModelsService = class ModelsService {
         }
         return "enterprise";
     }
+    modelDetailTabs() {
+        return [
+            { id: "overview", label: "Overview" },
+            { id: "howToUse", label: "How to Use" },
+            { id: "pricing", label: "Pricing" },
+            { id: "promptGuide", label: "Prompt Guide" },
+            { id: "agentCreation", label: "Agent Creation" },
+            { id: "reviews", label: "Reviews" }
+        ];
+    }
+    getUseCaseIcon(useCase) {
+        const normalized = useCase.toLowerCase();
+        if (normalized.includes("agent"))
+            return "🤖";
+        if (normalized.includes("reason"))
+            return "🧠";
+        if (normalized.includes("writ"))
+            return "✍️";
+        if (normalized.includes("vision"))
+            return "🖼️";
+        if (normalized.includes("audio"))
+            return "🎧";
+        if (normalized.includes("chat"))
+            return "💬";
+        if (normalized.includes("analysis"))
+            return "📊";
+        if (normalized.includes("research"))
+            return "🔎";
+        if (normalized.includes("coding") || normalized.includes("code"))
+            return "💻";
+        if (normalized.includes("document"))
+            return "📄";
+        if (normalized.includes("video"))
+            return "🎬";
+        if (normalized.includes("business"))
+            return "💼";
+        if (normalized.includes("math"))
+            return "📐";
+        if (normalized.includes("search"))
+            return "🌐";
+        if (normalized.includes("open source"))
+            return "🧩";
+        return "✨";
+    }
     matchesQuery(model, query) {
         if (query.provider && model.provider !== query.provider) {
             return false;
@@ -272,17 +316,116 @@ let ModelsService = class ModelsService {
     async findOne(id) {
         const models = await this.getModelSource();
         const selectedModel = models.find((model) => model.id === id);
+        if (!selectedModel) {
+            throw new common_1.NotFoundException(`Model ${id} not found`);
+        }
+        const numericPrice = Number.parseFloat(selectedModel.pricePerMillion.replace(/[^0-9.]/g, "")) || 0;
+        const outputPrice = numericPrice === 0 ? "$0.00 / 1M" : `$${(numericPrice * 1.35).toFixed(2)} / 1M`;
         return {
             ...selectedModel,
-            pricing: {
-                input: `${selectedModel?.pricePerMillion ?? "$0"} / 1M`,
-                output: "$10 / 1M"
+            subtitle: `by ${selectedModel.provider} · ${selectedModel.category} model`,
+            tabs: this.modelDetailTabs(),
+            overview: {
+                description: selectedModel.description,
+                input: selectedModel.category === "vision"
+                    ? "Text, images, audio, PDFs, video"
+                    : selectedModel.category === "code"
+                        ? "Text, codebases, files, diagrams"
+                        : "Text, documents, spreadsheets, images",
+                output: selectedModel.category === "code"
+                    ? "Code, text, plans, structured JSON"
+                    : "Text, code, summaries, structured data",
+                context: `${selectedModel.contextWindow.toLocaleString()} tokens`,
+                maxOutput: selectedModel.contextWindow >= 1000000 ? "32,768 tokens" : "8,192 tokens",
+                latency: `~${(selectedModel.latencyMs / 1000).toFixed(1)}s avg`,
+                useCases: selectedModel.useCases.map((useCase) => ({
+                    id: useCase.toLowerCase().replace(/\s+/g, "-"),
+                    label: useCase,
+                    icon: this.getUseCaseIcon(useCase)
+                })),
+                examplePrompt: `Help me use ${selectedModel.name} for a ${selectedModel.useCases[0] ?? "high-value"} workflow and show the best setup.`,
+                exampleResponse: [
+                    `${selectedModel.name} is a strong fit when you need ${selectedModel.useCases.join(", ").toLowerCase()}.`,
+                    `Start with a narrow prompt, clear success criteria, and a real sample input from your workflow.`,
+                    `Measure quality, latency, and cost together before rolling it into production.`
+                ],
+                followUps: [
+                    `What is the best prompt structure for ${selectedModel.name}?`,
+                    `Should I use ${selectedModel.name} in chat, API, or agent workflows?`
+                ],
+                benchmarks: [
+                    { id: "mmlu", label: "MMLU", value: "87.2" },
+                    { id: "human-eval", label: "HumanEval", value: "90.2" },
+                    { id: "math", label: "MATH", value: "76.6" },
+                    {
+                        id: "rating",
+                        label: "Rating",
+                        value: selectedModel.averageRating.toFixed(1)
+                    }
+                ]
             },
-            promptGuide: "Use structured system prompts and clear constraints.",
-            benchmarks: {
-                mmlu: 87.2,
-                humanEval: 90.2,
-                math: 76.6
+            howToUse: {
+                summary: `${selectedModel.name} works best when prompts are goal-first, grounded in real context, and tested on representative tasks.`,
+                steps: [
+                    `Define the exact outcome you want from ${selectedModel.name}.`,
+                    "Provide task context, constraints, and any reference material up front.",
+                    "Run 3-5 realistic examples before using it in a live workflow.",
+                    "Track response quality, latency, and cost together."
+                ],
+                checklist: [
+                    "Use one clear task per prompt",
+                    "Add examples when output format matters",
+                    "Ask for structured output when integrating with tools",
+                    "Review safety, compliance, and hallucination risk"
+                ]
+            },
+            pricing: {
+                input: `${selectedModel.pricePerMillion} / 1M`,
+                output: outputPrice,
+                billing: `${this.inferPriceModel(selectedModel.pricePerMillion)} billing`,
+                enterprise: numericPrice >= 8
+                    ? "Best for premium or enterprise-grade workloads"
+                    : "Good for production pilots and scalable app workflows",
+                notes: [
+                    "Input cost is best for prompt-side planning and retrieval context.",
+                    "Output cost matters most for long answers, reports, or generated content.",
+                    "Production teams should compare quality per dollar, not token price alone."
+                ]
+            },
+            promptGuide: {
+                summary: `Prompt ${selectedModel.name} with a role, desired outcome, constraints, and output format in one place.`,
+                tips: [
+                    "State the role or expertise you want the model to assume.",
+                    "Describe the output format before the task details.",
+                    "Include constraints like tone, length, and forbidden content.",
+                    "Ask the model to explain tradeoffs when quality matters."
+                ],
+                starterPrompt: `You are an expert ${selectedModel.category} assistant. Help me with [task]. Use this context: [context]. Deliver the result as [format]. Keep these constraints in mind: [constraints].`,
+                examples: [
+                    `Turn ${selectedModel.name} into a reviewer: critique this draft and suggest the top 3 improvements.`,
+                    `Use ${selectedModel.name} as a planner: break this goal into milestones, risks, and next steps.`,
+                    `Use ${selectedModel.name} as an analyst: summarize the file and extract decisions, blockers, and owners.`
+                ]
+            },
+            agentCreation: {
+                summary: `${selectedModel.name} can be used as the reasoning engine inside agents that coordinate prompts, tools, files, and decision steps.`,
+                steps: [
+                    "Choose the agent goal and define what success looks like.",
+                    "Add the minimum tools the agent needs, such as search, files, or APIs.",
+                    `Use ${selectedModel.name} for planning, reasoning, and response generation.`,
+                    "Test with real edge cases before deployment."
+                ],
+                recommendedTools: [
+                    "Knowledge base or document retrieval",
+                    "Task memory and conversation history",
+                    "Structured output schemas",
+                    "Monitoring for latency, cost, and quality"
+                ],
+                deploymentNotes: [
+                    "Start with one workflow before expanding to multi-step automation.",
+                    "Keep approval checkpoints for expensive or high-risk actions.",
+                    "Store successful prompts and failure examples for iteration."
+                ]
             }
         };
     }

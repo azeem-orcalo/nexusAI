@@ -79,6 +79,91 @@ const ChatAvatar = ({
   </div>
 );
 
+const sidebarActionStyles: Record<string, string> = {
+  marketplace: "border-[#eddcca] bg-[#fff7eb] text-[#b8753d]",
+  agent: "border-[#ead8ff] bg-[#f8f2ff] text-[#8a5be3]",
+  guide: "border-[#d7e5ff] bg-[#f1f6ff] text-[#5e86db]",
+  prompt: "border-[#e2ddf3] bg-[#f7f4ff] text-[#8675b6]",
+  pricing: "border-[#f5decd] bg-[#fff5eb] text-[#d28639]",
+  analysis: "border-[#d8f0e4] bg-[#effaf4] text-[#2f9a6c]",
+  image: "border-[#ffd9d7] bg-[#fff3f1] text-[#df7464]",
+  audio: "border-[#e0d7ff] bg-[#f5f2ff] text-[#7860d9]",
+  video: "border-[#d7dcff] bg-[#f3f5ff] text-[#6576d9]",
+  slides: "border-[#ffe2c9] bg-[#fff5ea] text-[#d8893f]",
+  infographic: "border-[#d8e4ff] bg-[#f0f5ff] text-[#557fda]",
+  quiz: "border-[#ffd6dc] bg-[#fff1f4] text-[#dc587a]",
+  flashcards: "border-[#ffe0a8] bg-[#fff8e7] text-[#d19b20]",
+  mindmap: "border-[#ffd7eb] bg-[#fff1f8] text-[#e05b9b]",
+  data: "border-[#d8e4ff] bg-[#f0f5ff] text-[#5d7fdb]",
+  content: "border-[#ffe3c1] bg-[#fff5e7] text-[#e08b28]",
+  code: "border-[#d3ebff] bg-[#edf7ff] text-[#3f96d0]",
+  documents: "border-[#e3dff8] bg-[#f6f4ff] text-[#8c7acb]",
+  translate: "border-[#d8efff] bg-[#eff9ff] text-[#3a9ac6]",
+  default: "border-[#eadfd2] bg-[#f8f4ee] text-[#9f8f81]"
+};
+
+const SidebarActionIcon = ({ actionId }: { actionId: string }): JSX.Element => {
+  const common = {
+    className: "h-4 w-4",
+    fill: "none",
+    viewBox: "0 0 24 24"
+  };
+
+  const glyph = (() => {
+    switch (actionId) {
+      case "marketplace":
+        return <svg {...common}><path d="M4 8.5 6 5h12l2 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /><path d="M5 9h14v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9Z" stroke="currentColor" strokeWidth="1.8" /><path d="M9.5 13.5h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "agent":
+        return <svg {...common}><rect x="6" y="7" width="12" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="12" r="1" fill="currentColor" /><circle cx="15" cy="12" r="1" fill="currentColor" /><path d="M9.5 15h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M12 4v2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "guide":
+        return <svg {...common}><path d="M6 6.5h6.5a2.5 2.5 0 0 1 2.5 2.5v8.5H8.5A2.5 2.5 0 0 0 6 20Z" stroke="currentColor" strokeWidth="1.8" /><path d="M18 6.5h-5.5A2.5 2.5 0 0 0 10 9v8.5h5.5A2.5 2.5 0 0 1 18 20Z" stroke="currentColor" strokeWidth="1.8" /></svg>;
+      case "prompt":
+        return <svg {...common}><path d="M7 18 17 8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M7 8h4v4H7z" stroke="currentColor" strokeWidth="1.8" /><path d="M13 14h4v4h-4z" stroke="currentColor" strokeWidth="1.8" /></svg>;
+      case "pricing":
+        return <svg {...common}><path d="M12 4.5v15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M15.5 7.5a3.5 3.5 0 0 0-7 0c0 4.5 7 2.5 7 7a3.5 3.5 0 0 1-7 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "analysis":
+      case "data":
+        return <svg {...common}><path d="M6 18V8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M12 18V5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M18 18v-6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "image":
+        return <svg {...common}><rect x="4.5" y="6" width="15" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="10" r="1.5" fill="currentColor" /><path d="m7 16 3.2-3.2a1 1 0 0 1 1.4 0L14 15l1.5-1.5a1 1 0 0 1 1.4 0L18 14.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
+      case "audio":
+        return <svg {...common}><path d="M10 8.5v7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M10 9.5 14 7v10l-4-2.5" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" /><path d="M17 10.2a4 4 0 0 1 0 3.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "video":
+        return <svg {...common}><rect x="4.5" y="7" width="10" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="m14.5 10 4-2v8l-4-2" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
+      case "slides":
+        return <svg {...common}><path d="M6 5.5h12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><rect x="7" y="7.5" width="10" height="8" rx="1.8" stroke="currentColor" strokeWidth="1.8" /><path d="M12 15.5V19" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M9.5 19h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "infographic":
+        return <svg {...common}><path d="M7 17V9" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M12 17V6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M17 17v-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M5 19h14" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "quiz":
+        return <svg {...common}><path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.7 1.4-1.7 2.7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><circle cx="12" cy="17" r="1" fill="currentColor" /></svg>;
+      case "flashcards":
+        return <svg {...common}><rect x="6" y="7" width="10" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M9 5h8a2 2 0 0 1 2 2v8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "mindmap":
+        return <svg {...common}><circle cx="12" cy="8" r="2" stroke="currentColor" strokeWidth="1.8" /><circle cx="7.5" cy="15.5" r="2" stroke="currentColor" strokeWidth="1.8" /><circle cx="16.5" cy="15.5" r="2" stroke="currentColor" strokeWidth="1.8" /><path d="M10.8 9.8 8.7 13.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="m13.2 9.8 2.1 3.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "content":
+        return <svg {...common}><path d="M7.5 6.5h7l2 2V17a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" /><path d="M10 11.5h4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M10 14.5h4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "code":
+        return <svg {...common}><path d="m9.5 8.5-3 3.5 3 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /><path d="m14.5 8.5 3 3.5-3 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
+      case "documents":
+        return <svg {...common}><path d="M8 5.5h6l3 3V18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" /><path d="M14 5.5v3h3" stroke="currentColor" strokeWidth="1.8" /><path d="M9.5 13h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      case "translate":
+        return <svg {...common}><path d="M6.5 8h7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M10 6v2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M8 12c1.2 0 2.6-1 4-3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="M14.5 8.5h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="m16.5 8.5-2 7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /><path d="m18.5 15.5-2-7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+      default:
+        return <svg {...common}><circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" /></svg>;
+    }
+  })();
+
+  return (
+    <span
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border ${
+        sidebarActionStyles[actionId] ?? sidebarActionStyles.default
+      }`}
+    >
+      {glyph}
+    </span>
+  );
+};
+
 export const ChatHubShell = ({ language, models, quickActions, createActions, analysisActions, promptOptions, promptCategories, promptSuggestions, userInitial = "U", onNavigate, initialRequest, onInitialMessageHandled }: ChatHubShellProps): JSX.Element => {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -490,7 +575,7 @@ export const ChatHubShell = ({ language, models, quickActions, createActions, an
 
         <aside className="overflow-y-auto border-l border-[#e6ddd3] bg-white px-4 py-4">
           <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#a29184]">{t(language, "quick_actions")}</p>
-          <div className="mt-4 space-y-5">{[{ title: "Navigation & Tools", actions: sections.quick }, { title: "Create & Generate", actions: sections.create }, { title: "Analyze & Write", actions: sections.analysis }].map((section) => <div key={section.title}><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#af9f91]">{section.title}</p><div className="mt-3 space-y-2">{section.actions.map((action) => <button key={action.id} className="flex w-full items-center gap-3 rounded-[14px] border border-[#e5d9cc] bg-white px-4 py-3 text-left text-[14px] text-[#3b3128] transition hover:border-[#d6bda8] hover:bg-[#fcfaf7]" onClick={() => routeAction(action.id)} type="button"><span className="text-[18px]">{action.icon}</span><span>{action.label}</span></button>)}</div></div>)}<div className="rounded-[18px] border border-[#e5d9cc] bg-[#fcfaf7] px-4 py-4"><p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#af9f91]">{t(language, "live_summary")}</p><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{messages.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "messages")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{shared.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "assets")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{isSharingScreen ? t(language, "on") : t(language, "off")}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "screen")}</p></div></div></div></div>
+          <div className="mt-4 space-y-5">{[{ title: "Navigation & Tools", actions: sections.quick }, { title: "Create & Generate", actions: sections.create }, { title: "Analyze & Write", actions: sections.analysis }].map((section) => <div key={section.title}><p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#af9f91]">{section.title}</p><div className="mt-3 space-y-2">{section.actions.map((action) => <button key={action.id} className="flex w-full items-center gap-3 rounded-[14px] border border-[#e5d9cc] bg-white px-4 py-3 text-left text-[14px] text-[#3b3128] transition hover:border-[#d6bda8] hover:bg-[#fcfaf7]" onClick={() => routeAction(action.id)} type="button"><SidebarActionIcon actionId={action.id} /><span>{action.label}</span></button>)}</div></div>)}<div className="rounded-[18px] border border-[#e5d9cc] bg-[#fcfaf7] px-4 py-4"><p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#af9f91]">{t(language, "live_summary")}</p><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{messages.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "messages")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{shared.length}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "assets")}</p></div><div className="rounded-[14px] border border-[#eadfd2] bg-white px-3 py-3"><p className="text-[18px] font-semibold text-[#231d18]">{isSharingScreen ? t(language, "on") : t(language, "off")}</p><p className="mt-1 text-[11px] text-[#938578]">{t(language, "screen")}</p></div></div></div></div>
         </aside>
       </div>
     </section>

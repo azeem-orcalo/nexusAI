@@ -28,17 +28,19 @@ export const PageLinksSection = ({
   onNavigate
 }: PageLinksSectionProps): JSX.Element => {
   return (
-    <section className="border-t border-[#ece1d5] bg-white px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-4">
-        <h2 className="text-[24px] font-semibold tracking-[-0.03em] text-[#211c17]">
-          Explore Product Pages
-        </h2>
-        <p className="mt-1 text-[11px] text-[#81766b]">
-          All primary flows mapped from requirements.md with direct page links.
-        </p>
-      </div>
+    <section className="border-t border-[#ece1d5] bg-white">
+      <div className="px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1840px]">
+          <div className="mb-4">
+            <h2 className="text-[24px] font-semibold tracking-[-0.03em] text-[#211c17]">
+              Explore Product Pages
+            </h2>
+            <p className="mt-1 text-[11px] text-[#81766b]">
+              All primary flows mapped from requirements.md with direct page links.
+            </p>
+          </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {links.map((link) => (
           <button
             key={link.id}
@@ -60,6 +62,8 @@ export const PageLinksSection = ({
             </span>
           </button>
         ))}
+          </div>
+        </div>
       </div>
     </section>
   );

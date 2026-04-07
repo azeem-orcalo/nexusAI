@@ -46,30 +46,70 @@ export declare class ModelsController {
         maxPrice: number;
     }>;
     findOne(id: string): Promise<{
+        subtitle: string;
+        tabs: {
+            id: string;
+            label: string;
+        }[];
+        overview: {
+            description: string;
+            input: string;
+            output: string;
+            context: string;
+            maxOutput: string;
+            latency: string;
+            useCases: {
+                id: string;
+                label: string;
+                icon: string;
+            }[];
+            examplePrompt: string;
+            exampleResponse: string[];
+            followUps: string[];
+            benchmarks: {
+                id: string;
+                label: string;
+                value: string;
+            }[];
+        };
+        howToUse: {
+            summary: string;
+            steps: string[];
+            checklist: string[];
+        };
         pricing: {
             input: string;
             output: string;
+            billing: string;
+            enterprise: string;
+            notes: string[];
         };
-        promptGuide: string;
-        benchmarks: {
-            mmlu: number;
-            humanEval: number;
-            math: number;
+        promptGuide: {
+            summary: string;
+            tips: string[];
+            starterPrompt: string;
+            examples: string[];
         };
-        id?: string | undefined;
-        name?: string | undefined;
-        provider?: string | undefined;
-        category?: string | undefined;
-        useCases?: string[] | undefined;
-        tags?: string[] | undefined;
-        description?: string | undefined;
-        pricePerMillion?: string | undefined;
-        averageRating?: number | undefined;
-        contextWindow?: number | undefined;
-        latencyMs?: number | undefined;
-        badge?: string | undefined;
-        priceModel?: string | undefined;
-        isOpenSource?: boolean | undefined;
+        agentCreation: {
+            summary: string;
+            steps: string[];
+            recommendedTools: string[];
+            deploymentNotes: string[];
+        };
+        id: string;
+        name: string;
+        provider: string;
+        category: string;
+        useCases: string[];
+        tags: string[];
+        description: string;
+        pricePerMillion: string;
+        averageRating: number;
+        contextWindow: number;
+        latencyMs: number;
+        badge: string | undefined;
+        priceModel: string;
+        isOpenSource: boolean;
     }>;
     reviews(id: string): Promise<(import("mongoose").FlattenMaps<import("mongoose").Document<unknown, {}, import("./schemas/review.schema").Review, {}, {}> & import("./schemas/review.schema").Review & {
         _id: import("mongoose").Types.ObjectId;
@@ -79,29 +119,69 @@ export declare class ModelsController {
         _id: import("mongoose").Types.ObjectId;
     }>)[]>;
     compare(payload: CompareModelsDto): Promise<{
+        subtitle: string;
+        tabs: {
+            id: string;
+            label: string;
+        }[];
+        overview: {
+            description: string;
+            input: string;
+            output: string;
+            context: string;
+            maxOutput: string;
+            latency: string;
+            useCases: {
+                id: string;
+                label: string;
+                icon: string;
+            }[];
+            examplePrompt: string;
+            exampleResponse: string[];
+            followUps: string[];
+            benchmarks: {
+                id: string;
+                label: string;
+                value: string;
+            }[];
+        };
+        howToUse: {
+            summary: string;
+            steps: string[];
+            checklist: string[];
+        };
         pricing: {
             input: string;
             output: string;
+            billing: string;
+            enterprise: string;
+            notes: string[];
         };
-        promptGuide: string;
-        benchmarks: {
-            mmlu: number;
-            humanEval: number;
-            math: number;
+        promptGuide: {
+            summary: string;
+            tips: string[];
+            starterPrompt: string;
+            examples: string[];
         };
-        id?: string | undefined;
-        name?: string | undefined;
-        provider?: string | undefined;
-        category?: string | undefined;
-        useCases?: string[] | undefined;
-        tags?: string[] | undefined;
-        description?: string | undefined;
-        pricePerMillion?: string | undefined;
-        averageRating?: number | undefined;
-        contextWindow?: number | undefined;
-        latencyMs?: number | undefined;
-        badge?: string | undefined;
-        priceModel?: string | undefined;
-        isOpenSource?: boolean | undefined;
+        agentCreation: {
+            summary: string;
+            steps: string[];
+            recommendedTools: string[];
+            deploymentNotes: string[];
+        };
+        id: string;
+        name: string;
+        provider: string;
+        category: string;
+        useCases: string[];
+        tags: string[];
+        description: string;
+        pricePerMillion: string;
+        averageRating: number;
+        contextWindow: number;
+        latencyMs: number;
+        badge: string | undefined;
+        priceModel: string;
+        isOpenSource: boolean;
     }[]>;
 }

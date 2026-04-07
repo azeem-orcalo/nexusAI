@@ -16,6 +16,7 @@ type AuthContextValue = {
   user: CurrentUser | null;
   signIn: (payload: SignInRequest) => Promise<void>;
   signUp: (payload: SignUpRequest) => Promise<void>;
+  signInAsGuest: (label?: string) => void;
   signOut: () => void;
 };
 
@@ -37,6 +38,19 @@ export const AuthProvider = ({ children }: PropsWithChildren): JSX.Element => {
 
     const parsed = JSON.parse(stored) as AuthSession;
     setSession(parsed);
+
+    if (parsed.isGuest) {
+      setUser({
+        id: parsed.id,
+        fullName: parsed.fullName ?? "Guest User",
+        email: parsed.email,
+        language: parsed.language ?? "en",
+        isActive: true,
+        isGuest: true
+      });
+      setIsLoading(false);
+      return;
+    }
 
     void api
       .me(parsed.token)
@@ -67,6 +81,26 @@ export const AuthProvider = ({ children }: PropsWithChildren): JSX.Element => {
     persistSession(nextSession, me);
   };
 
+  const signInAsGuest = (label = "Guest"): void => {
+    const guestSession: AuthSession = {
+      id: `guest-${Date.now()}`,
+      email: "guest@nexusai.local",
+      token: `guest-token-${Date.now()}`,
+      fullName: `${label} Guest`,
+      language: "en",
+      isGuest: true
+    };
+
+    persistSession(guestSession, {
+      id: guestSession.id,
+      fullName: guestSession.fullName ?? "Guest User",
+      email: guestSession.email,
+      language: guestSession.language ?? "en",
+      isActive: true,
+      isGuest: true
+    });
+  };
+
   const signOut = (): void => {
     window.localStorage.removeItem(STORAGE_KEY);
     setSession(null);
@@ -79,6 +113,7 @@ export const AuthProvider = ({ children }: PropsWithChildren): JSX.Element => {
       isLoading,
       session,
       user,
+      signInAsGuest,
       signIn,
       signOut,
       signUp
