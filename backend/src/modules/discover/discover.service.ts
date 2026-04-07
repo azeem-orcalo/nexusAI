@@ -4,6 +4,209 @@ import { RecommendationRequestDto } from "./dto/recommendation-request.dto";
 
 @Injectable()
 export class DiscoverService {
+  private readonly chatHubSidebarContent = {
+    quickActions: [
+      { id: "marketplace", label: "Browse Marketplace", icon: "MP" },
+      { id: "agent", label: "Build an Agent", icon: "AG" },
+      { id: "guide", label: "How to use Guide", icon: "GD" },
+      { id: "prompt", label: "Prompt Engineering", icon: "PE" },
+      { id: "pricing", label: "View Pricing", icon: "$" },
+      { id: "analysis", label: "AI Models Analysis", icon: "AI" }
+    ],
+    createActions: [
+      { id: "image", label: "Create Image", icon: "IM" },
+      { id: "audio", label: "Generate Audio", icon: "AU" },
+      { id: "video", label: "Create Video", icon: "VD" },
+      { id: "slides", label: "Create Slides", icon: "SL" },
+      { id: "infographic", label: "Create Infographs", icon: "IG" },
+      { id: "quiz", label: "Create Quiz", icon: "QZ" },
+      { id: "flashcards", label: "Create Flashcards", icon: "FC" },
+      { id: "mindmap", label: "Create Mind map", icon: "MM" }
+    ],
+    analysisActions: [
+      { id: "data", label: "Analyze Data", icon: "DT" },
+      { id: "content", label: "Write content", icon: "WR" },
+      { id: "code", label: "Code Generation", icon: "CD" },
+      { id: "documents", label: "Document Analysis", icon: "DOC" },
+      { id: "translate", label: "Translate", icon: "TR" }
+    ],
+    promptOptions: [
+      {
+        id: "write",
+        title: "Write content",
+        subtitle: "Emails, posts, stories",
+        icon: "WR"
+      },
+      {
+        id: "images",
+        title: "Create images",
+        subtitle: "Art, photos, designs",
+        icon: "IM"
+      },
+      {
+        id: "build",
+        title: "Build something",
+        subtitle: "Apps, tools, websites",
+        icon: "BL"
+      },
+      {
+        id: "automate",
+        title: "Automate work",
+        subtitle: "Save hours every week",
+        icon: "AT"
+      },
+      {
+        id: "data",
+        title: "Analyse data",
+        subtitle: "PDFs, sheets, reports",
+        icon: "DT"
+      },
+      {
+        id: "explore",
+        title: "Just exploring",
+        subtitle: "Show me what's possible",
+        icon: "EX"
+      }
+    ],
+    promptCategories: [
+      { id: "use-cases", label: "Use cases" },
+      { id: "monitor", label: "Monitor the situation" },
+      { id: "prototype", label: "Create a prototype" },
+      { id: "business", label: "Build a business plan" },
+      { id: "content", label: "Create content" },
+      { id: "research", label: "Analyze & research" },
+      { id: "learn", label: "Learn something" }
+    ],
+    promptSuggestions: [
+      {
+        id: "use-case-model",
+        categoryId: "use-cases",
+        label: "Help me find the best AI model for my project",
+        prompt: "Help me find the best AI model for my project and explain the tradeoffs."
+      },
+      {
+        id: "use-case-agents",
+        categoryId: "use-cases",
+        label: "Create AI agents for workflow automation",
+        prompt: "Create AI agents for workflow automation and recommend the right setup."
+      },
+      {
+        id: "use-case-docs",
+        categoryId: "use-cases",
+        label: "Analyse documents and extract key information",
+        prompt: "Analyse documents and extract key information in a structured format."
+      },
+      {
+        id: "monitor-alerts",
+        categoryId: "monitor",
+        label: "Build an AI monitoring dashboard for key metrics",
+        prompt: "Help me build an AI monitoring dashboard for uptime, cost, and latency."
+      },
+      {
+        id: "monitor-incidents",
+        categoryId: "monitor",
+        label: "Track incidents and summarize daily anomalies",
+        prompt: "Track incidents and summarize daily anomalies across my AI workflows."
+      },
+      {
+        id: "monitor-health",
+        categoryId: "monitor",
+        label: "Compare model health across providers",
+        prompt: "Compare model health across providers and highlight any operational risks."
+      },
+      {
+        id: "prototype-chatbot",
+        categoryId: "prototype",
+        label: "I want to build an AI chatbot for my website",
+        prompt: "I want to build an AI chatbot for my website. Show me the fastest prototype path."
+      },
+      {
+        id: "prototype-app",
+        categoryId: "prototype",
+        label: "Draft a clickable AI product prototype",
+        prompt: "Draft a clickable AI product prototype with screens, flows, and user stories."
+      },
+      {
+        id: "prototype-pitch",
+        categoryId: "prototype",
+        label: "Turn an idea into an MVP launch plan",
+        prompt: "Turn my idea into an MVP launch plan with milestones and deliverables."
+      },
+      {
+        id: "business-pricing",
+        categoryId: "business",
+        label: "Build a business plan for an AI startup",
+        prompt: "Build a business plan for an AI startup including pricing, GTM, and risks."
+      },
+      {
+        id: "business-cost",
+        categoryId: "business",
+        label: "Estimate AI product cost and margins",
+        prompt: "Estimate AI product cost, margins, and break-even assumptions."
+      },
+      {
+        id: "business-market",
+        categoryId: "business",
+        label: "Research competitors and market positioning",
+        prompt: "Research competitors and market positioning for my AI business idea."
+      },
+      {
+        id: "content-images",
+        categoryId: "content",
+        label: "Generate realistic images for my marketing campaign",
+        prompt: "Generate realistic images for my marketing campaign and suggest the best workflow."
+      },
+      {
+        id: "content-calendar",
+        categoryId: "content",
+        label: "Create a 30-day AI content calendar",
+        prompt: "Create a 30-day AI content calendar with themes, channels, and copy ideas."
+      },
+      {
+        id: "content-brand",
+        categoryId: "content",
+        label: "Write brand-ready ad copy and hooks",
+        prompt: "Write brand-ready ad copy and hooks for my upcoming campaign."
+      },
+      {
+        id: "research-models",
+        categoryId: "research",
+        label: "Compare the best AI models for coding",
+        prompt: "Compare the best AI models for coding with strengths, limits, and pricing."
+      },
+      {
+        id: "research-release",
+        categoryId: "research",
+        label: "Summarize recent multimodal AI releases",
+        prompt: "Summarize recent multimodal AI releases and tell me what matters most."
+      },
+      {
+        id: "research-stack",
+        categoryId: "research",
+        label: "Recommend an AI stack by budget and latency",
+        prompt: "Recommend an AI stack for my use case based on budget and latency goals."
+      },
+      {
+        id: "learn-voice",
+        categoryId: "learn",
+        label: "Add voice and speech recognition to my app",
+        prompt: "Add voice and speech recognition to my app and explain the full implementation path."
+      },
+      {
+        id: "learn-agents",
+        categoryId: "learn",
+        label: "Teach me AI agents step by step",
+        prompt: "Teach me AI agents step by step in simple language."
+      },
+      {
+        id: "learn-prompts",
+        categoryId: "learn",
+        label: "Learn prompt engineering with examples",
+        prompt: "Help me learn prompt engineering with practical examples and exercises."
+      }
+    ]
+  };
+
   private readonly homeWorkflowCategories = [
     {
       id: "recruiting",
@@ -170,6 +373,10 @@ export class DiscoverService {
       "Analyze data",
       "Code generation"
     ];
+  }
+
+  chatHubContent() {
+    return this.chatHubSidebarContent;
   }
 
   homeWorkflows() {

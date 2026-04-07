@@ -31,6 +31,9 @@ let DiscoverController = class DiscoverController {
     quickActions() {
         return this.discoverService.quickActions();
     }
+    chatHubContent() {
+        return this.discoverService.chatHubContent();
+    }
     homeWorkflows() {
         return this.discoverService.homeWorkflows();
     }
@@ -67,6 +70,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], DiscoverController.prototype, "quickActions", null);
+__decorate([
+    (0, common_1.Get)("chat-hub"),
+    (0, swagger_1.ApiOperation)({ summary: "Get chat hub sidebar and prompt content" }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], DiscoverController.prototype, "chatHubContent", null);
 __decorate([
     (0, common_1.Get)("home-workflows"),
     (0, swagger_1.ApiOperation)({ summary: "Get home page workflow categories and suggestions" }),

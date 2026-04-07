@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ChatMessageDto, SaveChatMessageDto } from "./dto/chat-message.dto";
 import { ChatService } from "./chat.service";
@@ -12,6 +12,12 @@ export class ChatController {
   @ApiOperation({ summary: "Get chat history for a saved conversation" })
   history(@Query("sessionId") sessionId: string) {
     return this.chatService.history(sessionId);
+  }
+
+  @Delete("history")
+  @ApiOperation({ summary: "Delete chat history for a saved conversation" })
+  deleteHistory(@Query("sessionId") sessionId: string) {
+    return this.chatService.deleteHistory(sessionId);
   }
 
   @Post("respond")

@@ -66,32 +66,151 @@ const WORKSPACE_CONTENT = {
   ],
   suggestions: [
     {
-      id: "space-app",
+      id: "use-case-space-app",
       categoryId: "use-cases",
       title: "Build a space exploration timeline app",
       icon: "🚀",
       prompt: "Help me build a space exploration timeline app with a clean product plan and implementation steps."
     },
     {
-      id: "stock-tracker",
+      id: "use-case-speech-app",
+      categoryId: "use-cases",
+      title: "Add speech recognition to a coaching app",
+      icon: "🎙️",
+      prompt: "Help me design an agent workflow for a coaching app with speech recognition and summaries."
+    },
+    {
+      id: "use-case-doc-review",
+      categoryId: "use-cases",
+      title: "Review contracts and extract action items",
+      icon: "📄",
+      prompt: "I need an agent that reviews contracts and extracts key action items and risks."
+    },
+    {
+      id: "business-stock-tracker",
       categoryId: "business",
       title: "Create a real-time stock market tracker",
       icon: "📊",
       prompt: "Help me create a real-time stock market tracker and choose the best agent setup for it."
     },
     {
-      id: "chatbot-demo",
+      id: "business-pricing",
+      categoryId: "business",
+      title: "Build an AI SaaS pricing assistant",
+      icon: "💼",
+      prompt: "Help me build an AI SaaS pricing assistant and define the right business workflow."
+    },
+    {
+      id: "business-sales",
+      categoryId: "business",
+      title: "Automate lead qualification for sales",
+      icon: "📈",
+      prompt: "Design an agent that qualifies inbound sales leads and routes the best prospects."
+    },
+    {
+      id: "learn-chatbot-demo",
       categoryId: "learn",
       title: "Prototype an AI chatbot demo application",
       icon: "🤖",
       prompt: "Guide me through building a demo AI chatbot application from idea to prototype."
     },
     {
-      id: "kanban-board",
+      id: "learn-roadmap",
+      categoryId: "learn",
+      title: "Learn agent design step by step",
+      icon: "📚",
+      prompt: "Teach me agent design step by step and help me build my first production-ready agent."
+    },
+    {
+      id: "learn-prompts",
+      categoryId: "learn",
+      title: "Turn prompt ideas into agent workflows",
+      icon: "✍️",
+      prompt: "Show me how to turn prompt ideas into structured agent workflows with examples."
+    },
+    {
+      id: "monitor-kanban-board",
       categoryId: "monitor",
       title: "Create a project management Kanban board",
       icon: "📋",
       prompt: "I want an agent to help me create and manage a project management Kanban board."
+    },
+    {
+      id: "monitor-incidents",
+      categoryId: "monitor",
+      title: "Monitor incidents and summarize alerts",
+      icon: "🚨",
+      prompt: "Create an agent that monitors incidents and summarizes alerts for my ops team."
+    },
+    {
+      id: "monitor-dashboard",
+      categoryId: "monitor",
+      title: "Track model latency and cost over time",
+      icon: "📉",
+      prompt: "Help me build an agent that tracks model latency, uptime, and cost over time."
+    },
+    {
+      id: "research-market",
+      categoryId: "research",
+      title: "Research competitors before product launch",
+      icon: "🔎",
+      prompt: "Create a research agent that studies competitors before product launch."
+    },
+    {
+      id: "research-stack",
+      categoryId: "research",
+      title: "Compare AI stacks for a new product",
+      icon: "🧠",
+      prompt: "Compare AI stacks for a new product and recommend the best agent tooling."
+    },
+    {
+      id: "research-brief",
+      categoryId: "research",
+      title: "Generate weekly market intelligence briefs",
+      icon: "📰",
+      prompt: "Build an agent that generates weekly market intelligence briefs for leadership."
+    },
+    {
+      id: "content-campaign",
+      categoryId: "content",
+      title: "Create multi-channel campaign content",
+      icon: "🎨",
+      prompt: "Help me build an agent that creates multi-channel campaign content from one brief."
+    },
+    {
+      id: "content-social",
+      categoryId: "content",
+      title: "Turn a blog into social media assets",
+      icon: "📣",
+      prompt: "I need an agent that turns a blog into social media assets and short-form posts."
+    },
+    {
+      id: "content-email",
+      categoryId: "content",
+      title: "Write email sequences in brand voice",
+      icon: "✉️",
+      prompt: "Create an agent that writes email sequences in our brand voice and tracks revisions."
+    },
+    {
+      id: "analysis-kpis",
+      categoryId: "analysis",
+      title: "Analyze KPIs and explain anomalies",
+      icon: "📊",
+      prompt: "Build an analysis agent that reviews KPIs and explains anomalies in plain language."
+    },
+    {
+      id: "analysis-feedback",
+      categoryId: "analysis",
+      title: "Summarize customer feedback themes",
+      icon: "🧾",
+      prompt: "Create an agent that summarizes customer feedback themes and recommends actions."
+    },
+    {
+      id: "analysis-finance",
+      categoryId: "analysis",
+      title: "Review finance reports and highlight risks",
+      icon: "💹",
+      prompt: "Help me create an agent that reviews finance reports and highlights risks and trends."
     }
   ]
 } as const;

@@ -15,6 +15,39 @@ export declare class DiscoverController {
         }[];
     };
     quickActions(): string[];
+    chatHubContent(): {
+        quickActions: {
+            id: string;
+            label: string;
+            icon: string;
+        }[];
+        createActions: {
+            id: string;
+            label: string;
+            icon: string;
+        }[];
+        analysisActions: {
+            id: string;
+            label: string;
+            icon: string;
+        }[];
+        promptOptions: {
+            id: string;
+            title: string;
+            subtitle: string;
+            icon: string;
+        }[];
+        promptCategories: {
+            id: string;
+            label: string;
+        }[];
+        promptSuggestions: {
+            id: string;
+            categoryId: string;
+            label: string;
+            prompt: string;
+        }[];
+    };
     homeWorkflows(): {
         categories: {
             id: string;

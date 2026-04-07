@@ -31,6 +31,7 @@ import type {
   ApiModelFilters,
   ApiReview,
   AppPage,
+  ChatHubContent as ApiChatHubContent,
   DashboardOverview,
   DashboardUsagePoint,
   HomeUseCase,
@@ -174,9 +175,9 @@ const App = (): JSX.Element => {
   const [currentPage, setCurrentPage] = useState<AppPage>("home");
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [featuredModels, setFeaturedModels] = useState<ApiModel[]>([]);
+  const [chatHubModels, setChatHubModels] = useState<ApiModel[]>([]);
   const [allModels, setAllModels] = useState<ApiModel[]>([]);
   const [modelFilters, setModelFilters] = useState<ApiModelFilters | null>(null);
-  const [quickActions, setQuickActions] = useState<string[]>([]);
   const [homeWorkflowCategories, setHomeWorkflowCategories] = useState<
     HomeWorkflowCategory[]
   >([]);
@@ -198,6 +199,9 @@ const App = (): JSX.Element => {
     window.localStorage.getItem("nexusai-language") ?? "en"
   );
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [chatHubContent, setChatHubContent] = useState<ApiChatHubContent | null>(
+    null
+  );
   const [selectedModelDetail, setSelectedModelDetail] =
     useState<ModelDetail | null>(null);
   const [pendingChatRequest, setPendingChatRequest] = useState<{
@@ -205,7 +209,9 @@ const App = (): JSX.Element => {
     prompt: string;
   } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isChatHubLoading, setIsChatHubLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [chatHubError, setChatHubError] = useState<string>("");
 
   const refreshAgents = (): Promise<void> =>
     Promise.all([api.agents(), api.agentTemplates()]).then(
@@ -222,7 +228,6 @@ const App = (): JSX.Element => {
       api.featuredModels(),
       api.listModels(),
       api.modelFilters(),
-      api.quickActions(),
       api.homeWorkflows(),
       api.homeUseCases(),
       api.researchFeed(),
@@ -236,7 +241,6 @@ const App = (): JSX.Element => {
           nextFeaturedModels,
           nextAllModels,
           nextModelFilters,
-          nextQuickActions,
           nextHomeWorkflows,
           nextHomeUseCases,
           nextResearchFeed,
@@ -251,7 +255,6 @@ const App = (): JSX.Element => {
           setFeaturedModels(nextFeaturedModels);
           setAllModels(nextAllModels);
           setModelFilters(nextModelFilters);
-          setQuickActions(nextQuickActions);
           setHomeWorkflowCategories(nextHomeWorkflows.categories);
           setHomeUseCases(nextHomeUseCases.items);
           setHomeUseCaseTitle(nextHomeUseCases.title);
@@ -282,6 +285,44 @@ const App = (): JSX.Element => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (currentPage !== "chat-hub") {
+      return;
+    }
+
+    let isMounted = true;
+    setIsChatHubLoading(true);
+    setChatHubError("");
+
+    void Promise.all([api.featuredModels(), api.chatHubContent()])
+      .then(([nextChatHubModels, nextChatHubContent]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setChatHubModels(nextChatHubModels);
+        setChatHubContent(nextChatHubContent);
+      })
+      .catch((loadError) => {
+        if (isMounted) {
+          setChatHubError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load Chat Hub data."
+          );
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsChatHubLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPage]);
 
   useEffect(() => {
     if (!session?.token) {
@@ -375,15 +416,17 @@ const App = (): JSX.Element => {
     [agents.length, allModels, featuredModels]
   );
 
+  const quickActions: string[] = [];
+
   const chatModels = useMemo(
     () =>
-      featuredModels.map((model, index) => ({
+      chatHubModels.map((model, index) => ({
         id: model.id,
         name: model.name,
         provider: model.provider,
         active: index === 0
       })),
-    [featuredModels]
+    [chatHubModels]
   );
 
   const chatQuickActions = useMemo<ChatAction[]>(
@@ -487,6 +530,32 @@ const App = (): JSX.Element => {
       description={error}
       eyebrow="Integration Error"
       title={t(language, "error_title")}
+    />
+  );
+
+  const renderChatHubLoading = (): JSX.Element => (
+    <PlaceholderPage
+      actions={[
+        { id: "loading-chat-models", label: "Loading Chat Hub models..." },
+        { id: "loading-chat-actions", label: "Loading sidebar actions..." },
+        { id: "loading-chat-prompts", label: "Loading chat prompts..." }
+      ]}
+      description="Chat Hub data is loading from backend APIs."
+      eyebrow="Chat Hub"
+      title="Preparing Chat Hub"
+    />
+  );
+
+  const renderChatHubError = (): JSX.Element => (
+    <PlaceholderPage
+      actions={[
+        { id: "retry-chat-hub", label: "Open Chat Hub again" },
+        { id: "discover-endpoint", label: "Check /api/discover/chat-hub" },
+        { id: "models-endpoint", label: "Check /api/models/featured" }
+      ]}
+      description={chatHubError}
+      eyebrow="Chat Hub Error"
+      title="Chat Hub failed to load"
     />
   );
 
@@ -685,30 +754,28 @@ const App = (): JSX.Element => {
     };
 
     if (currentPage === "chat-hub") {
+      if (chatHubError) {
+        return renderChatHubError();
+      }
+
+      if (isChatHubLoading || !chatHubContent) {
+        return renderChatHubLoading();
+      }
+
       return (
         <ChatHubShell
-          analysisActions={chatQuickActions.slice(3)}
-          createActions={chatQuickActions}
-          footerPrompts={researchFeed.map((item) => item.summary)}
+          analysisActions={chatHubContent.analysisActions}
+          createActions={chatHubContent.createActions}
           initialRequest={pendingChatRequest}
           language={language}
           models={chatModels}
           onNavigate={handleNavigate}
           onInitialMessageHandled={() => setPendingChatRequest(null)}
-          promptOptions={chatPromptOptions}
-          quickActions={[
-            { id: "marketplace", label: "Browse Marketplace", icon: "🏪" },
-            { id: "agent", label: "Build an Agent", icon: "🧩" },
-            { id: "guide", label: "How to use Guide", icon: "📖" },
-            { id: "prompt", label: "Prompt Engineering", icon: "✍" },
-            { id: "pricing", label: "View Pricing", icon: "💳" },
-            { id: "analysis", label: "AI Models Analysis", icon: "📊" }
-          ]}
-          suggestionChips={
-            chatSuggestionChips.length > 0
-              ? chatSuggestionChips
-              : [{ id: "loading", label: "Research feed loading" }]
-          }
+          promptOptions={chatHubContent.promptOptions}
+          promptCategories={chatHubContent.promptCategories}
+          promptSuggestions={chatHubContent.promptSuggestions}
+          quickActions={chatHubContent.quickActions}
+          userInitial={(user?.fullName?.trim()?.[0] ?? user?.email?.trim()?.[0] ?? "U").toUpperCase()}
         />
       );
     }
@@ -725,6 +792,10 @@ const App = (): JSX.Element => {
       return (
         <AgentsWorkspace
           agents={agents}
+          onOpenChatHub={(prompt) => {
+            setPendingChatRequest({ id: `agent-chat-${Date.now()}`, prompt });
+            handleNavigate("chat-hub");
+          }}
           onCreateAgent={async (payload) => {
             const createdAgent = await api.createAgent(payload);
             await refreshAgents();
@@ -798,3 +869,4 @@ const App = (): JSX.Element => {
 };
 
 export default App;
+

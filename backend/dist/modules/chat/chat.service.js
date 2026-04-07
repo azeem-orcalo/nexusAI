@@ -38,6 +38,13 @@ let ChatService = class ChatService {
             })) ?? []
         };
     }
+    async deleteHistory(sessionId) {
+        const result = await this.chatStore.deleteOne({ sessionId }).exec();
+        return {
+            deleted: result.deletedCount > 0,
+            sessionId
+        };
+    }
     async respond(payload) {
         const trimmedMessage = payload.message.trim();
         const selectedModel = payload.modelId

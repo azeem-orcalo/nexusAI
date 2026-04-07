@@ -18,12 +18,14 @@ import type {
   CurrentUser,
   DashboardOverview,
   DashboardUsagePoint,
+  DeleteChatHistoryResponse,
   DiscoverResearchFilters,
   DeployAgentResponse,
   DiscoverOnboarding,
   ChatResponse,
   ChatResponseRequest,
   ChatHistoryResponse,
+  ChatHubContent,
   HomeWorkflowResponse,
   HomeUseCasesResponse,
   RecommendationRequest,
@@ -134,6 +136,7 @@ export const api = {
       body: payload
     }),
   quickActions: () => request<string[]>("/discover/quick-actions"),
+  chatHubContent: () => request<ChatHubContent>("/discover/chat-hub"),
   homeWorkflows: () => request<HomeWorkflowResponse>("/discover/home-workflows"),
   homeUseCases: () => request<HomeUseCasesResponse>("/discover/home-use-cases"),
   researchFeed: (query?: Record<string, string | number | boolean | undefined>) =>
@@ -142,6 +145,11 @@ export const api = {
     request<DiscoverResearchFilters>("/discover/research-feed/filters"),
   chatHistory: (sessionId: string) =>
     request<ChatHistoryResponse>("/chat/history", { query: { sessionId } }),
+  deleteChatHistory: (sessionId: string) =>
+    request<DeleteChatHistoryResponse>("/chat/history", {
+      method: "DELETE",
+      query: { sessionId }
+    }),
   chatRespond: (payload: ChatResponseRequest) =>
     request<ChatResponse>("/chat/respond", { method: "POST", body: payload }),
   saveChatMessage: (payload: SaveChatMessageRequest) =>

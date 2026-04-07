@@ -214,6 +214,45 @@ export type DiscoverOnboarding = {
   steps: string[];
 };
 
+export type ChatHubAction = {
+  id: string;
+  label: string;
+  icon: string;
+};
+
+export type ChatHubPromptOption = {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+};
+
+export type ChatHubSuggestion = {
+  id: string;
+  label: string;
+};
+
+export type ChatHubPromptCategory = {
+  id: string;
+  label: string;
+};
+
+export type ChatHubPromptSuggestion = {
+  id: string;
+  categoryId: string;
+  label: string;
+  prompt: string;
+};
+
+export type ChatHubContent = {
+  quickActions: ChatHubAction[];
+  createActions: ChatHubAction[];
+  analysisActions: ChatHubAction[];
+  promptOptions: ChatHubPromptOption[];
+  promptCategories: ChatHubPromptCategory[];
+  promptSuggestions: ChatHubPromptSuggestion[];
+};
+
 export type HomeWorkflowCategory = {
   id: string;
   label: string;
@@ -304,6 +343,11 @@ export type ChatHistoryMessage = {
 export type ChatHistoryResponse = {
   sessionId: string;
   messages: ChatHistoryMessage[];
+};
+
+export type DeleteChatHistoryResponse = {
+  deleted: boolean;
+  sessionId: string;
 };
 
 export type ChatResponseRequest = {

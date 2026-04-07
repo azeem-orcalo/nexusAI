@@ -15,6 +15,10 @@ export declare class ChatService {
             createdAt: Date;
         }[];
     }>;
+    deleteHistory(sessionId: string): Promise<{
+        deleted: boolean;
+        sessionId: string;
+    }>;
     respond(payload: ChatMessageDto): Promise<{
         reply: string;
         suggestedPrompts: string[];

@@ -27,6 +27,12 @@ export class DiscoverController {
     return this.discoverService.quickActions();
   }
 
+  @Get("chat-hub")
+  @ApiOperation({ summary: "Get chat hub sidebar and prompt content" })
+  chatHubContent() {
+    return this.discoverService.chatHubContent();
+  }
+
   @Get("home-workflows")
   @ApiOperation({ summary: "Get home page workflow categories and suggestions" })
   homeWorkflows() {

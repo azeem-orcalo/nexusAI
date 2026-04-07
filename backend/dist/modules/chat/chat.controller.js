@@ -24,6 +24,9 @@ let ChatController = class ChatController {
     history(sessionId) {
         return this.chatService.history(sessionId);
     }
+    deleteHistory(sessionId) {
+        return this.chatService.deleteHistory(sessionId);
+    }
     respond(payload) {
         return this.chatService.respond(payload);
     }
@@ -40,6 +43,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], ChatController.prototype, "history", null);
+__decorate([
+    (0, common_1.Delete)("history"),
+    (0, swagger_1.ApiOperation)({ summary: "Delete chat history for a saved conversation" }),
+    __param(0, (0, common_1.Query)("sessionId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ChatController.prototype, "deleteHistory", null);
 __decorate([
     (0, common_1.Post)("respond"),
     (0, swagger_1.ApiOperation)({ summary: "Get a chat response for the chat hub composer" }),

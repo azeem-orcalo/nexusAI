@@ -31,7 +31,16 @@ export class ChatService {
           text: message.text,
           attachments: message.attachments ?? [],
           createdAt: message.createdAt
-        })) ?? []
+      })) ?? []
+    };
+  }
+
+  async deleteHistory(sessionId: string) {
+    const result = await this.chatStore.deleteOne({ sessionId }).exec();
+
+    return {
+      deleted: result.deletedCount > 0,
+      sessionId
     };
   }
 
